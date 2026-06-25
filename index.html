@@ -1,0 +1,1214 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Bautagesbericht</title>
+<meta name="theme-color" content="#0f172a" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?deps=react@18.3.1",
+    "lucide-react": "https://esm.sh/lucide-react@0.383.0?deps=react@18.3.1",
+    "xlsx": "https://esm.sh/xlsx@0.18.5"
+  }
+}
+</script>
+<style>html,body,#root{height:100%}body{margin:0;background:#f1f5f9}#boot{font-family:system-ui;color:#64748b;padding:24px;text-align:center}</style>
+</head>
+<body>
+<div id="root"><div id="boot">Lädt Bautagesbericht…</div></div>
+<script type="text/babel" data-type="module" data-presets="react">
+import React, { useState, useEffect, useMemo, Fragment } from "react";
+import {
+  HardHat, Plus, Trash2, Save, FileText, ChevronLeft, ChevronRight, ChevronDown,
+  Printer, Sun, Cloud, CloudRain, Snowflake, CloudSun, Users, Truck, Search,
+  ClipboardList, Gauge, CheckCircle2, X, Layers, Copy, Archive, FolderOpen, Pencil,
+  Info, Wand2, FileSpreadsheet, FileCode2, Share2, Settings, ListChecks, RotateCcw,
+  LogIn, LogOut, Lock, ShieldCheck, Cloud as CloudIcon, Clock,
+} from "lucide-react";
+import * as XLSX from "xlsx";
+import { createRoot } from "react-dom/client";
+
+/* ===================== SUPABASE (REST + Auth via fetch, ohne Bibliothek) =====================
+   Hier die beiden Werte aus deinem Supabase-Projekt eintragen, dann auf GitHub veröffentlichen.
+   Leer lassen = lokaler Modus (nur dieses Gerät). In der Chat-Vorschau bleibt es lokal. */
+const SUPABASE_URL = "https://lyxhvtyomanwakchggfg.supabase.co"; // Project URL
+const SUPABASE_KEY = "sb_publishable_HqzCpxedBj73Gl-nU-2aPA_r2gQF5Sz"; // Publishable key (öffentlich, durch RLS geschützt)
+const SB_ON = !!(SUPABASE_URL && SUPABASE_KEY);
+const sbHeaders = (token) => ({ apikey: SUPABASE_KEY, Authorization: `Bearer ${token || SUPABASE_KEY}`, "Content-Type": "application/json" });
+async function sbLoadLists() {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/app_lists?id=eq.default&select=data`, { headers: sbHeaders() });
+  if (!r.ok) throw new Error("Laden " + r.status);
+  const rows = await r.json();
+  return rows[0]?.data || null;
+}
+async function sbSaveLists(lists, token) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/app_lists?on_conflict=id`, {
+    method: "POST",
+    headers: { ...sbHeaders(token), Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify({ id: "default", data: lists, updated_at: new Date().toISOString() }),
+  });
+  if (!r.ok) throw new Error("Speichern " + r.status + ": " + (await r.text()));
+}
+async function sbLogin(email, password) {
+  const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: "POST", headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error_description || d.msg || d.error || "Anmeldung fehlgeschlagen");
+  return { token: d.access_token, email: d.user?.email || email };
+}
+let _listsSaveTimer = null; // entprellt das Speichern in Supabase
+
+
+/* ===================== STANDARD-LISTEN (Seed, danach editierbar) ===================== */
+const DEF_SEKTIONEN = Array.from({ length: 22 }, (_, i) => `Sektion ${i + 1}`);
+const DEF_TAETIGKEITEN = [
+  "Ausbläser bekämpfen", "Ausführung E-Power Pipe (TEW)", "Baustelleneinrichtung Allgemein",
+  "Baustelleneinrichtung HDD", "Baustelleneinrichtung Schweißstation", "Begehung Zustandsfeststellung",
+  "Entsorgung allgemein", "Entsorgung Bentonit", "Erstellung HDD", "Führung von Besuchern/Behörden",
+  "Grundbruch bekämpfen", "HSE-Übung", "HSE-Unterweisung", "Kabelzug", "Kabelzug Mithilfe Vorbereitung",
+  "Microtunneling", "Muffengrube ausbilden", "Oberboden abziehen", "Oberboden einbringen/glattziehen",
+  "Pilotbohrung", "Räumen der Baustelle", "Rekultivierung", "Rohrpressung", "Sandbettung einbringen",
+  "Schallschutzmaßnahmen installieren", "Schutzrohr Druckprobe/Kalibrierung", "Schutzrohr einmessen",
+  "Schutzrohr Kabel einziehen", "Schutzrohr LWL einbringen", "Schutzrohr schweißen", "Sonstiges",
+  "Straßen reinigen", "Toolboxtalk", "Transporte", "Unterboden ausheben", "Unterboden einbringen",
+  "Verbau", "Vergrämung installieren", "Wartezeiten", "Wartungsarbeiten", "Wasserhaltung installieren",
+  "Wasserhaltung kontrollieren", "Wegebau",
+];
+const DEF_ROLLEN = ["Polier", "Vorarbeiter", "Facharbeiter", "Werker / Helfer", "Maschinist",
+  "Baggerfahrer", "Schweißer", "HDD-Operator", "Kranführer", "Sicherungsposten"];
+
+// Gerätetypen mit konkreten Geräten (units) – Beispiele vorbefüllt, in den Listen erweiterbar.
+const DEF_GERAETE = [
+  { typ: "Kettenbagger", units: ["CAT 320", "Liebherr R 926", "Komatsu PC210"] },
+  { typ: "Mobilbagger / Radbagger", units: ["CAT M315", "Liebherr A 918"] },
+  { typ: "Radlader", units: ["CAT 950", "Volvo L90"] },
+  { typ: "Planierraupe", units: ["CAT D6"] },
+  { typ: "HDD-Bohranlage", units: ["Herrenknecht HK250", "Prime Drilling PD 250/130"] },
+  { typ: "Microtunneling-Anlage", units: [] },
+  { typ: "LKW / Kipper", units: ["MAN TGS", "Mercedes Arocs", "Volvo FMX"] },
+  { typ: "Tieflader", units: [] },
+  { typ: "Mobilkran", units: ["Liebherr LTM 1050", "Grove GMK"] },
+  { typ: "Autokran", units: [] },
+  { typ: "Schweißgerät", units: ["Stumpfschweißmaschine DA 280", "E-Hand-Schweißgerät"] },
+  { typ: "Bentonit-/Recyclinganlage", units: [] },
+  { typ: "Rollenlaufbahn", units: [] },
+  { typ: "Rüttelplatte", units: ["Wacker DPU 6555"] },
+  { typ: "Walze", units: ["Bomag BW 213", "Hamm 3411"] },
+  { typ: "Pumpe / Wasserhaltung", units: [] },
+  { typ: "Stromaggregat", units: [] },
+];
+
+const BAS_GROUPS = [
+  ["Baustelleneinrichtung", [["031", "Haupt BE – erstellen"], ["032", "Haupt BE – vorhalten"], ["033", "Haupt BE – räumen"],
+    ["034", "BE Querung – erstellen"], ["035", "BE Querung – vorhalten"], ["036", "BE Querung – räumen"], ["037", "BE Archäologie"]]],
+  ["Baustraßen", [["051", "Äußere Baustraßen"], ["052", "Innere Baustraßen"]]],
+  ["Oberboden", [["101", "Oberboden-Abtrag"], ["102", "Oberboden-Zwischenbegrünung"], ["103", "Oberboden-Andecken"]]],
+  ["Unterboden", [["201", "Unterboden-Abtrag"], ["202", "Unterboden-Zwischenbegrünung"], ["203", "Unterboden-Andecken"],
+    ["251", "Unterboden-Abtrag"], ["252", "Unterboden-Verfüllung"]]],
+  ["Bettung", [["261", "Bettung aus Sand/Kies/Splitt"], ["262", "Bettung aus Flüssigboden"], ["263", "Boden fördern"],
+    ["264", "Boden aufbereiten"], ["265", "Bettung einbauen"]]],
+  ["Grabenverbau", [["301", "Grabenverbau – Einbau"], ["302", "Grabenverbau – Vorhalten"], ["303", "Grabenverbau – Ausbau"]]],
+  ["Entsorgung", [["35", "Entsorgung"]]],
+  ["Geotextil", [["401", "Geotextil – liefern und verlegen"], ["402", "Geotextil – zurückbauen"]]],
+  ["Querung", [["501A", "Molchen und Kalibrieren (Querung)"], ["501B", "Qualitätsprüfung (Querung)"],
+    ["5011A", "Trassieren (Querung)"], ["5011B", "Abladen (Querung)"], ["5012", "Auf- & Abbau Schweißplatz (Querung)"],
+    ["5013", "Auf- & Abbau Rollenlaufbahn (Querung)"], ["5014", "Schweißarbeiten / Verbinden (Querung)"],
+    ["5015", "Lief. & Einbau Einziehhilfe (Querung)"], ["5016", "Einziehen / Absenken (Querung)"], ["5017", "Erdseil (Querung)"],
+    ["5018", "Befestigung LWL-KSR (Querung)"], ["5019", "Mont. & Demont. Verschlussteller (Querung)"], ["50121", "E-Hand schweißen (Querung)"]]],
+  ["Offene Grube (OG)", [["5021A", "Abladen (OG)"], ["5021B", "Trassieren (OG)"], ["5022", "Auf- & Abbau Schweißplatz (OG)"],
+    ["5023", "Auf- & Abbau Rollenlaufbahn (OG)"], ["5024", "Schweißarbeiten / Verbinden (OG)"], ["5025", "Lieferung und Einbau Einziehhilfe (OG)"],
+    ["5026", "Einziehen / Absenken (OG)"], ["5027", "Erdseil (OG)"], ["5028", "Molchen und Kalibrieren (OG)"]]],
+  ["Muffengrube", [["5031", "Schweißarbeiten / Verbinden (Muffengr.)"], ["5032", "Erdseil (Muffengr.)"]]],
+  ["Kombiniert", [["5041", "Kom.-Abladen und Trassieren"], ["5044", "Kom.-Schweißarbeiten / Verbinden"]]],
+  ["Rückverfüllung", [["601", "Oberboden Rückverfüllung Kabelgräben"], ["602", "Unterboden Rückverfüllung Kabelgräben"]]],
+  ["Casingrohre", [["70", "Casingrohre liefern, einbringen und Rückbau"]]],
+];
+// Referenz: BAS -> verknüpfte LV-Leistung (Kurztext/ME, aus LV-Datei) + Standard-Inhaltstext (editierbar).
+const BAS_EXTRA = {
+  "031": { desc: "Hauptbaustelleneinrichtung herstellen – Flächen, Container, Zäune, Versorgung." },
+  "032": { desc: "Hauptbaustelleneinrichtung vorhalten und betreiben." },
+  "033": { desc: "Hauptbaustelleneinrichtung räumen und zurückbauen." },
+  "034": { desc: "Baustelleneinrichtung an einer Querung herstellen." },
+  "035": { desc: "Baustelleneinrichtung Querung vorhalten." },
+  "036": { desc: "Baustelleneinrichtung Querung räumen." },
+  "037": { desc: "Baustelleneinrichtung für die archäologische Begleitung." },
+  "051": { desc: "Äußere Baustraßen herstellen und unterhalten (Zufahrten)." },
+  "052": { desc: "Innere Baustraßen entlang der Trasse." },
+  "101": { lv: "Oberboden (A-Horizont) abtragen und lagern", me: "m²", desc: "Oberboden abtragen und in Mieten lagern." },
+  "102": { desc: "Zwischenbegrünung der Oberbodenmieten." },
+  "103": { lv: "Oberboden (A-Horizont) des AG andecken", me: "m²", desc: "Oberboden wieder andecken." },
+  "201": { lv: "Unterboden (B-Horizont) ausheben und lagern", me: "m³", desc: "Unterboden ausheben und lagern." },
+  "202": { desc: "Zwischenbegrünung der Unterbodenmieten." },
+  "203": { lv: "Unterboden (B-Horizont) des AG andecken", me: "m³", desc: "Unterboden wieder andecken." },
+  "251": { lv: "Unterboden (B-Horizont) ausheben und lagern", me: "m³", desc: "Unterboden ausheben und lagern." },
+  "252": { desc: "Unterboden / Aushub im Graben verfüllen." },
+  "261": { desc: "Bettung aus Sand / Kies / Splitt in der Leitungszone." },
+  "262": { desc: "Bettung aus Flüssigboden herstellen." },
+  "263": { desc: "Boden für die Bettung fördern." },
+  "264": { desc: "Boden für die Bettung aufbereiten." },
+  "265": { desc: "Bettung in der Leitungszone einbauen." },
+  "301": { desc: "Grabenverbau einbauen (GU herstellen)." },
+  "302": { desc: "Grabenverbau vorhalten." },
+  "303": { desc: "Grabenverbau ausbauen / rückbauen." },
+  "35": { desc: "Entsorgung von Aushub / Bauschutt nach Deklaration (EBV / LAGA)." },
+  "401": { lv: "Geotextil (Kombigitter) Zugfestigkeit 120 KN/m", me: "m²", desc: "Geotextil / Kombigitter liefern und verlegen." },
+  "402": { desc: "Geotextil zurückbauen." },
+  "501A": { lv: "Molchen und Kalibrieren Kabelschutzrohr, HGÜ", me: "Stk", desc: "Kabelschutzrohr molchen und kalibrieren (Querung)." },
+  "501B": { lv: "Qualitätsprüfung KSR DA 280, SDR 17", me: "psch", desc: "Qualitätsprüfung der Kabelschutzrohre (Querung)." },
+  "5011A": { desc: "Rohre abladen und trassieren (Querung)." },
+  "5011B": { desc: "Rohre abladen (Querung)." },
+  "5012": { desc: "Schweißplatz auf- und abbauen (Querung)." },
+  "5013": { desc: "Rollenlaufbahn auf- und abbauen (Querung)." },
+  "5014": { desc: "Schweißarbeiten / Verbinden – Stumpfschweißung (Querung)." },
+  "5015": { desc: "Einziehhilfe liefern und einbauen (Querung)." },
+  "5016": { desc: "Rohrstrang einziehen / absenken (Querung)." },
+  "5017": { lv: "Erdseil liefern und verlegen, Graben", me: "m", desc: "Erdseil liefern und verlegen (Querung)." },
+  "5018": { desc: "LWL-Kabelschutzrohre befestigen (Querung)." },
+  "5019": { desc: "Verschlussteller montieren / demontieren (Querung)." },
+  "50121": { desc: "E-Hand-Schweißen (Querung)." },
+  "5021A": { desc: "Rohre abladen (offene Grube)." },
+  "5021B": { desc: "Rohre trassieren (offene Grube)." },
+  "5022": { desc: "Schweißplatz auf- und abbauen (offene Grube)." },
+  "5023": { desc: "Rollenlaufbahn auf- und abbauen (offene Grube)." },
+  "5024": { desc: "Schweißarbeiten / Verbinden (offene Grube)." },
+  "5025": { desc: "Einziehhilfe liefern und einbauen (offene Grube)." },
+  "5026": { desc: "Rohrstrang einziehen / absenken (offene Grube)." },
+  "5027": { desc: "Erdseil verlegen (offene Grube)." },
+  "5028": { desc: "Molchen und Kalibrieren (offene Grube)." },
+  "5031": { desc: "Schweißarbeiten / Verbinden (Muffengrube)." },
+  "5032": { desc: "Erdseil verlegen (Muffengrube)." },
+  "5041": { desc: "Abladen und Trassieren (kombiniert)." },
+  "5044": { desc: "Schweißarbeiten / Verbinden (kombiniert)." },
+  "601": { lv: "Kulturfähiges Bodenmaterial (Oberboden) liefern und einbauen", me: "m³", desc: "Oberboden-Rückverfüllung der Kabelgräben." },
+  "602": { lv: "Kulturfähiges Bodenmaterial (Unterboden) liefern und einbauen", me: "m³", desc: "Unterboden-Rückverfüllung der Kabelgräben." },
+  "70": { desc: "Casingrohre liefern, einbringen und rückbauen." },
+};
+const DEF_BAS = BAS_GROUPS.flatMap(([group, items]) =>
+  items.map(([code, name]) => ({ code, name, group, desc: BAS_EXTRA[code]?.desc || "" })));
+const BAS_LV = Object.fromEntries(Object.entries(BAS_EXTRA).filter(([, v]) => v.lv).map(([k, v]) => [k, { lv: v.lv, me: v.me }]));
+
+const defaultLists = () => ({
+  sektionen: [...DEF_SEKTIONEN], taetigkeiten: [...DEF_TAETIGKEITEN], rollen: [...DEF_ROLLEN],
+  bas: DEF_BAS.map((b) => ({ ...b })), geraete: DEF_GERAETE.map((g) => ({ typ: g.typ, units: [...g.units] })),
+});
+
+// Sektion-Stammdaten (km, Bauwerke, Segment, Bauabschnitt) – als Info beim Auswählen.
+const SEKTION_INFO = {
+  "Sektion 1": { kmVon: "0", kmBis: "1.015", bauwerke: ["VAM 1", "VAM 2"], segment: "29", ba: "BA1" },
+  "Sektion 2": { kmVon: "1.015", kmBis: "2.830", bauwerke: ["Q5 (HDD)", "VAM 4"], segment: "29", ba: "BA1" },
+  "Sektion 3": { kmVon: "2.830", kmBis: "4.337", bauwerke: ["Q12 (HDD)"], segment: "29", ba: "BA1" },
+  "Sektion 4": { kmVon: "4.337", kmBis: "5.925", bauwerke: ["EPP 400"], segment: "29", ba: "BA1" },
+  "Sektion 5": { kmVon: "5.925", kmBis: "7.635", bauwerke: ["Q18 (HDD)", "Q268 (Pressung)"], segment: "29", ba: "BA1" },
+  "Sektion 6": { kmVon: "7.635", kmBis: "9.468", bauwerke: ["VAM 6", "Q23 (Microtunnel)", "VAM 7"], segment: "30", ba: "BA2" },
+  "Sektion 7": { kmVon: "9.468", kmBis: "11.052", bauwerke: ["Q29 (HDD)", "Q23 (Microtunnel)", "Q35 (HDD)", "Q37 (HDD)"], segment: "30", ba: "BA2" },
+  "Sektion 8": { kmVon: "11.052", kmBis: "12.876", bauwerke: [], segment: "30", ba: "BA2" },
+  "Sektion 9": { kmVon: "12.876", kmBis: "14.238", bauwerke: ["Q48 (HDD)"], segment: "30", ba: "BA2" },
+  "Sektion 10": { kmVon: "14.238", kmBis: "15.625", bauwerke: ["Q52 (HDD)"], segment: "30", ba: "BA2" },
+  "Sektion 11": { kmVon: "15.625", kmBis: "17.461", bauwerke: ["Q57 (HDD)", "Q58 (HDD)", "VAM 8"], segment: "30", ba: "BA3" },
+  "Sektion 12": { kmVon: "17.461", kmBis: "18.846", bauwerke: ["Q62 (HDD)", "Q63 (HDD)"], segment: "30", ba: "BA3" },
+  "Sektion 13": { kmVon: "18.846", kmBis: "20.485", bauwerke: ["Q279 (HDD)"], segment: "30", ba: "BA3" },
+  "Sektion 14": { kmVon: "20.485", kmBis: "21.549", bauwerke: ["Q67 (HDD)"], segment: "30", ba: "BA3" },
+  "Sektion 15": { kmVon: "21.549", kmBis: "22.936", bauwerke: ["Q68 (HDD)"], segment: "31", ba: "BA3" },
+  "Sektion 16": { kmVon: "22.936", kmBis: "24.780", bauwerke: ["Q283 (HDD)", "Q284 (HDD)"], segment: "31", ba: "BA4" },
+  "Sektion 17": { kmVon: "24.780", kmBis: "25.956", bauwerke: ["Q288 (HDD)"], segment: "31", ba: "BA4" },
+  "Sektion 18": { kmVon: "25.956", kmBis: "27.528", bauwerke: ["Q 82 (HDD)", "Q84 (HDD)"], segment: "31", ba: "BA4" },
+  "Sektion 19": { kmVon: "27.528", kmBis: "28.855", bauwerke: ["VAM 9"], segment: "31", ba: "BA4" },
+  "Sektion 20": { kmVon: "28.855", kmBis: "30.711", bauwerke: ["Q92+94 (HDD)", "VAM 10"], segment: "31", ba: "BA4" },
+  "Sektion 21": { kmVon: "30.711", kmBis: "32.509", bauwerke: [], segment: "31", ba: "BA4" },
+  "Sektion 22": { kmVon: "32.509", kmBis: "34.184", bauwerke: ["Q105 (Pressung)", "VAM 11"], segment: "31", ba: "BA4" },
+};
+const sektInfo = (name) => SEKTION_INFO[name] || null;
+const VORHABEN_OPTS = [{ value: "West", label: "West · V3 (links)" }, { value: "Ost", label: "Ost · V4 (rechts)" }];
+const VORHABEN_STILL = ["OST", "WEST", "Übergreifend"].map((v) => ({ value: v, label: v }));
+// Querschnitt-Skizze (eingebettetes Bild) – per Python injiziert.
+const VORHABEN_IMG = "data:image/png;base64,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";
+
+const EINHEITEN = ["m", "lfm", "m²", "m³", "t", "kg", "Stk", "h", "psch"];
+const WETTER = [
+  { key: "sonnig", label: "Sonnig", Icon: Sun }, { key: "heiter", label: "Heiter", Icon: CloudSun },
+  { key: "bewoelkt", label: "Bewölkt", Icon: Cloud }, { key: "regen", label: "Regen", Icon: CloudRain },
+  { key: "schnee", label: "Schnee", Icon: Snowflake },
+];
+const STEPS = ["Leistung", "Ausführung", "Personal", "Geräte", "Prüfen"];
+
+/* ===================== HELFER ===================== */
+const uid = () => Math.random().toString(36).slice(2, 9);
+const num = (v) => { const n = parseFloat(String(v ?? "").replace(",", ".")); return isNaN(n) ? 0 : n; };
+const fmt = (n) => n.toLocaleString("de-DE", { maximumFractionDigits: 2 });
+const today = () => new Date().toISOString().slice(0, 10);
+const dateDE = (iso) => iso ? new Date(iso).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" }) : "";
+const phOf = (p) => p.personal.reduce((a, x) => a + num(x.anzahl) * num(x.stunden), 0);
+const ghOf = (p) => p.geraete.reduce((a, x) => a + (num(x.anzahl) || 1) * num(x.stunden), 0);
+const geraetLabel = (g) => `${g.typ}${g.geraet ? ` – ${g.geraet}` : ""}`;
+
+/* ===================== EXPORT (XML / Excel / PDF / Senden) ===================== */
+const xmlEsc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const fileBase = (day) => `Bautagesbericht_${(day.projekt || "Projekt").replace(/[^\wÄÖÜäöüß-]+/g, "_")}_${day.datum}`;
+
+function buildXML(day, positions, kurz) {
+  const L = ['<?xml version="1.0" encoding="UTF-8"?>', "<bautagesbericht>", "  <kopf>",
+    `    <datum>${xmlEsc(day.datum)}</datum>`, `    <projekt>${xmlEsc(day.projekt)}</projekt>`,
+    `    <bauleiter>${xmlEsc(day.bauleiter)}</bauleiter>`, `    <gewerk>${xmlEsc(day.gewerk)}</gewerk>`,
+    `    <arbeitszeit von="${xmlEsc(day.arbeitStart)}" bis="${xmlEsc(day.arbeitEnde)}"/>`,
+    `    <wetter>${xmlEsc(day.wetter)}</wetter>`,
+    `    <temperatur min="${xmlEsc(day.tempMin)}" max="${xmlEsc(day.tempMax)}"/>`, "  </kopf>", "  <positionen>"];
+  positions.forEach((p, i) => {
+    L.push(`    <position nr="${i + 1}">`, `      <sektion>${xmlEsc(p.sektion)}</sektion>`,
+      `      <vorhaben>${xmlEsc(p.vorhaben)}</vorhaben>`,
+      `      <vorhabenuebergreifend>${xmlEsc(p.vorhabenUeb)}</vorhabenuebergreifend>`,
+      `      <taetigkeit>${xmlEsc(p.taetigkeit)}</taetigkeit>`,
+      `      <bas code="${xmlEsc(p.bas)}" kurztext="${xmlEsc(kurz(p.bas))}"/>`,
+      `      <beschreibung>${xmlEsc(p.beschreibung)}</beschreibung>`,
+      `      <menge einheit="${xmlEsc(p.einheit)}">${num(p.menge)}</menge>`,
+      `      <personenstunden>${phOf(p)}</personenstunden>`, `      <geraetestunden>${ghOf(p)}</geraetestunden>`, "      <personal>");
+    p.personal.filter((x) => x.rolle).forEach((x) =>
+      L.push(`        <person rolle="${xmlEsc(x.rolle)}" anzahl="${num(x.anzahl)}" stunden="${num(x.stunden)}"/>`));
+    L.push("      </personal>", "      <geraete>");
+    p.geraete.filter((x) => x.typ).forEach((x) =>
+      L.push(`        <geraet typ="${xmlEsc(x.typ)}" bezeichnung="${xmlEsc(x.geraet)}" anzahl="${num(x.anzahl)}" stunden="${num(x.stunden)}"/>`));
+    L.push("      </geraete>", "    </position>");
+  });
+  L.push("  </positionen>");
+  const still = (day.stillstand || []).filter((s) => s.start || s.ende || s.grund || s.sektion);
+  L.push("  <stillstandszeiten>");
+  still.forEach((s) => L.push(`    <stillstand sektion="${xmlEsc(s.sektion)}" vorhaben="${xmlEsc(s.vorhaben)}" start="${xmlEsc(s.start)}" ende="${xmlEsc(s.ende)}">${xmlEsc(s.grund)}</stillstand>`));
+  L.push("  </stillstandszeiten>");
+  const vork = (day.vorkommnisse || []).filter((v) => (v.text || "").trim());
+  L.push("  <vorkommnisse>");
+  vork.forEach((v) => L.push(`    <eintrag>${xmlEsc(v.text)}</eintrag>`));
+  L.push("  </vorkommnisse>");
+  L.push("</bautagesbericht>");
+  return L.join("\n");
+}
+
+function buildWorkbook(day, positions, kurz) {
+  const posRows = positions.map((p, i) => ({
+    Nr: i + 1, Datum: day.datum, Projekt: day.projekt, Bauleiter: day.bauleiter, Gewerk: day.gewerk,
+    "Arbeit von": day.arbeitStart, "Arbeit bis": day.arbeitEnde, Sektion: p.sektion,
+    Vorhaben: p.vorhaben, "Vorhabenübergreifend": p.vorhabenUeb,
+    Tätigkeit: p.taetigkeit, BAS: p.bas, Kurztext: kurz(p.bas), Beschreibung: p.beschreibung,
+    Menge: num(p.menge), Einheit: p.einheit, Personenstunden: phOf(p), Gerätestunden: ghOf(p),
+  }));
+  const persRows = [];
+  positions.forEach((p, i) => p.personal.filter((x) => x.rolle).forEach((x) => persRows.push({
+    Pos: i + 1, BAS: p.bas, Rolle: x.rolle, Anzahl: num(x.anzahl), "Stunden/Person": num(x.stunden), Personenstunden: num(x.anzahl) * num(x.stunden),
+  })));
+  const gerRows = [];
+  positions.forEach((p, i) => p.geraete.filter((x) => x.typ).forEach((x) => gerRows.push({
+    Pos: i + 1, BAS: p.bas, Gerätetyp: x.typ, "Gerät (genau)": x.geraet, Anzahl: num(x.anzahl), Betriebsstunden: num(x.stunden), Gerätestunden: (num(x.anzahl) || 1) * num(x.stunden),
+  })));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(posRows.length ? posRows : [{ Nr: "" }]), "Positionen");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(persRows.length ? persRows : [{ Pos: "" }]), "Personal");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(gerRows.length ? gerRows : [{ Pos: "" }]), "Geräte");
+  const stillRows = (day.stillstand || []).filter((s) => s.start || s.ende || s.grund || s.sektion).map((s, i) => ({
+    Nr: i + 1, Sektion: s.sektion, Vorhaben: s.vorhaben, Startzeit: s.start, Endzeit: s.ende, Begründung: s.grund,
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(stillRows.length ? stillRows : [{ Nr: "" }]), "Stillstand");
+  const vorkRows = (day.vorkommnisse || []).filter((v) => (v.text || "").trim()).map((v, i) => ({ Nr: i + 1, Vorkommnis: v.text }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(vorkRows.length ? vorkRows : [{ Nr: "" }]), "Vorkommnisse");
+  return wb;
+}
+
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+}
+const exportXML = (day, positions, kurz) =>
+  downloadBlob(new Blob([buildXML(day, positions, kurz)], { type: "application/xml;charset=utf-8" }), fileBase(day) + ".xml");
+const exportExcel = (day, positions, kurz) => {
+  try { XLSX.writeFile(buildWorkbook(day, positions, kurz), fileBase(day) + ".xlsx"); }
+  catch (e) {
+    const out = XLSX.write(buildWorkbook(day, positions, kurz), { bookType: "xlsx", type: "array" });
+    downloadBlob(new Blob([out], { type: "application/octet-stream" }), fileBase(day) + ".xlsx");
+  }
+};
+async function shareReport(day, positions, kurz) {
+  const base = fileBase(day);
+  const xmlFile = new File([buildXML(day, positions, kurz)], base + ".xml", { type: "application/xml" });
+  const xlsxOut = XLSX.write(buildWorkbook(day, positions, kurz), { bookType: "xlsx", type: "array" });
+  const xlsxFile = new File([xlsxOut], base + ".xlsx", { type: "application/octet-stream" });
+  if (navigator.canShare && navigator.canShare({ files: [xmlFile, xlsxFile] })) {
+    try { await navigator.share({ files: [xmlFile, xlsxFile], title: "Bautagesbericht", text: `Bautagesbericht ${day.projekt} ${day.datum}` }); return; }
+    catch (e) { /* abgebrochen -> Fallback */ }
+  }
+  exportXML(day, positions, kurz); exportExcel(day, positions, kurz);
+  const subject = encodeURIComponent(`Bautagesbericht ${day.projekt} ${day.datum}`);
+  const body = encodeURIComponent(`Anbei der Bautagesbericht vom ${day.datum} (${positions.length} Positionen).\n\nDateien (XML + Excel) wurden heruntergeladen – bitte an diese Mail anhängen.`);
+  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+}
+
+const emptyDay = () => ({ datum: today(), projekt: "SuedLink Los 3", bauleiter: "", gewerk: "", arbeitStart: "", arbeitEnde: "", wetter: "heiter", tempMin: "", tempMax: "", stillstand: [], vorkommnisse: [] });
+const emptyDraft = () => ({
+  id: uid(), sektion: "", vorhabenUeb: "Nein", vorhaben: "", taetigkeit: "", bas: "", beschreibung: "", menge: "", einheit: "",
+  personal: [{ id: uid(), rolle: "", anzahl: "", stunden: "" }],
+  geraete: [{ id: uid(), typ: "", geraet: "", anzahl: "1", stunden: "" }],
+});
+
+/* ===================== KLEINE UI-BAUSTEINE ===================== */
+const Label = ({ children, hint }) => (
+  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+    {children}{hint && <span className="ml-1 normal-case tracking-normal text-slate-400">{hint}</span>}
+  </label>
+);
+const inputCls = "w-full min-h-[46px] rounded-lg border border-slate-300 bg-white px-3 text-[15px] text-slate-900 placeholder-slate-400 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/40";
+
+function Combo({ value, onChange, options, placeholder = "– wählen –" }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const sel = options.find((o) => o.value === value);
+  const ql = q.trim().toLowerCase();
+  const filtered = ql ? options.filter((o) => `${o.value} ${o.label}`.toLowerCase().includes(ql)) : options;
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => { setOpen((v) => !v); setQ(""); }}
+        className={`${inputCls} flex items-center justify-between gap-2 text-left`}>
+        <span className={`truncate ${sel ? "text-slate-900" : "text-slate-400"}`}>{sel ? sel.label : placeholder}</span>
+        <ChevronDown size={16} className="shrink-0 text-slate-400" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
+            <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
+              <Search size={15} className="text-slate-400" />
+              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Suchen…" className="w-full bg-transparent text-sm outline-none" />
+            </div>
+            <div className="max-h-60 overflow-auto py-1">
+              {filtered.length === 0 && <div className="px-3 py-3 text-sm text-slate-400">Keine Treffer</div>}
+              {filtered.map((o, i) => {
+                const showGroup = o.group && (i === 0 || filtered[i - 1].group !== o.group);
+                return (
+                  <Fragment key={o.value + i}>
+                    {showGroup && <div className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">{o.group}</div>}
+                    <button type="button" onClick={() => { onChange(o.value); setOpen(false); setQ(""); }}
+                      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-amber-50 ${o.value === value ? "bg-amber-50 font-semibold text-amber-800" : "text-slate-700"}`}>
+                      {o.code !== undefined && <span className="w-12 shrink-0 font-mono text-xs text-slate-500">{o.code}</span>}
+                      <span className="truncate">{o.labelShort ?? o.label}</span>
+                    </button>
+                  </Fragment>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+const Field = ({ label, hint, children }) => (<div><Label hint={hint}>{label}</Label>{children}</div>);
+
+function TopBar({ title, subtitle, left, right }) {
+  return (
+    <header className="sticky top-0 z-10 border-b border-black/20 bg-slate-900 text-white print:hidden">
+      <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
+        {left || (<div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500 text-slate-900"><HardHat size={20} /></div>)}
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-base font-black leading-none tracking-tight">{title}</h1>
+          {subtitle && <p className="truncate text-[11px] text-slate-400">{subtitle}</p>}
+        </div>
+        {right}
+      </div>
+    </header>
+  );
+}
+const Shell = ({ children }) => (
+  <div className="min-h-screen bg-slate-100 text-slate-900" style={{ fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>{children}</div>
+);
+const RowShell = ({ index, onRemove, children }) => (
+  <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+    <div className="mb-2 flex items-center justify-between">
+      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Zeile {index + 1}</span>
+      <button onClick={onRemove} className="rounded p-1 text-slate-400 transition hover:bg-red-50 hover:text-red-600" aria-label="Entfernen"><Trash2 size={16} /></button>
+    </div>
+    {children}
+  </div>
+);
+const AddBtn = ({ onClick, children }) => (
+  <button onClick={onClick} className="mt-3 inline-flex items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-amber-500 hover:bg-amber-50 hover:text-amber-700"><Plus size={16} /> {children}</button>
+);
+
+/* Einfacher Editor für eine Liste aus Texten */
+function StringListEditor({ items, onChange, placeholder }) {
+  const setAt = (i, v) => onChange(items.map((x, k) => (k === i ? v : x)));
+  const del = (i) => onChange(items.filter((_, k) => k !== i));
+  const add = () => onChange([...items, ""]);
+  return (
+    <div className="space-y-2">
+      {items.map((it, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <input className={inputCls} value={it} placeholder={placeholder} onChange={(e) => setAt(i, e.target.value)} />
+          <button onClick={() => del(i)} className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Löschen"><Trash2 size={16} /></button>
+        </div>
+      ))}
+      <AddBtn onClick={add}>Eintrag hinzufügen</AddBtn>
+    </div>
+  );
+}
+
+/* ===================== APP ===================== */
+export default function App() {
+  const [lists, setLists] = useState(defaultLists());
+  const [day, setDay] = useState(emptyDay());
+  const [positions, setPositions] = useState([]);
+  const [archive, setArchive] = useState([]);
+  const [view, setView] = useState("home"); // home | wizard | preview | archive | settings
+  const [step, setStep] = useState(0);
+  const [draft, setDraft] = useState(emptyDraft());
+  const [editingId, setEditingId] = useState(null);
+  const [previewData, setPreviewData] = useState(null);
+  const [basModal, setBasModal] = useState(null); // BAS-Code für Info-Fenster
+  const [session, setSession] = useState(null); // {token, email} – nur Admins
+  const [listsErr, setListsErr] = useState(""); // Hinweis bei Speicher-/Ladeproblemen
+
+  useEffect(() => {
+    (async () => {
+      try {
+        if (typeof window !== "undefined" && window.storage) {
+          const r = await window.storage.get("btb_v2");
+          if (r?.value) { const d = JSON.parse(r.value); setDay(d.day || emptyDay()); setPositions(d.positions || []); setArchive(d.archive || []); }
+          const s = await window.storage.get("btb_session");
+          if (s?.value) setSession(JSON.parse(s.value));
+          const l = await window.storage.get("btb_lists_v1");
+          if (l?.value) setLists({ ...defaultLists(), ...JSON.parse(l.value) }); // lokaler Cache zuerst
+        }
+      } catch (e) {}
+      if (SB_ON) {
+        try { const d = await sbLoadLists(); if (d) setLists({ ...defaultLists(), ...d }); } // gemeinsame Listen
+        catch (e) { /* offline/blockiert -> lokaler Cache bleibt */ }
+      }
+    })();
+  }, []);
+  const persist = async (next) => {
+    try { if (typeof window !== "undefined" && window.storage) await window.storage.set("btb_v2", JSON.stringify({ day, positions, archive, ...next })); } catch (e) {}
+  };
+  const persistLists = async (l) => {
+    try { if (typeof window !== "undefined" && window.storage) await window.storage.set("btb_lists_v1", JSON.stringify(l)); } catch (e) {}
+  };
+  const persistSession = async (s) => {
+    try { if (typeof window !== "undefined" && window.storage) { if (s) await window.storage.set("btb_session", JSON.stringify(s)); else await window.storage.delete("btb_session"); } } catch (e) {}
+  };
+  const setListKey = (key, value) => setLists((l) => {
+    const n = { ...l, [key]: value };
+    persistLists(n); // lokaler Cache
+    if (SB_ON && session) {
+      setListsErr("");
+      clearTimeout(_listsSaveTimer);
+      _listsSaveTimer = setTimeout(() => {
+        sbSaveLists(n, session.token).catch((e) => setListsErr("Speichern fehlgeschlagen – evtl. neu anmelden. (" + e.message + ")"));
+      }, 800);
+    }
+    return n;
+  });
+  const resetLists = () => { const n = defaultLists(); setLists(n); persistLists(n); if (SB_ON && session) sbSaveLists(n, session.token).catch((e) => setListsErr(e.message)); };
+  const doLogout = () => { setSession(null); persistSession(null); };
+
+
+  // Abgeleitete Optionen / Lookups aus den (editierbaren) Listen
+  const sektOpts = useMemo(() => lists.sektionen.filter(Boolean).map((s) => ({ value: s, label: s })), [lists.sektionen]);
+  const taetOpts = useMemo(() => lists.taetigkeiten.filter(Boolean).map((s) => ({ value: s, label: s })), [lists.taetigkeiten]);
+  const rollenOpts = useMemo(() => lists.rollen.filter(Boolean).map((s) => ({ value: s, label: s })), [lists.rollen]);
+  const basOpts = useMemo(() => lists.bas.filter((b) => b.code).map((b) => ({ value: b.code, code: b.code, labelShort: b.name, label: `${b.code} – ${b.name}`, group: b.group })), [lists.bas]);
+  const geraeteTypOpts = useMemo(() => lists.geraete.filter((g) => g.typ).map((g) => ({ value: g.typ, label: g.typ })), [lists.geraete]);
+  const unitsOf = (typ) => lists.geraete.find((g) => g.typ === typ)?.units.filter(Boolean) || [];
+  const basName = (code) => lists.bas.find((b) => b.code === code)?.name || code || "";
+  const basMeta = (code) => { const b = lists.bas.find((x) => x.code === code); const lvm = BAS_LV[code]; return { name: b?.name || code, lv: lvm?.lv, me: lvm?.me, desc: b?.desc || "" }; };
+
+  /* --- Wizard --- */
+  const startNew = () => { setDraft(emptyDraft()); setEditingId(null); setStep(0); setView("wizard"); };
+  const startEdit = (p) => { setDraft(structuredClone(p)); setEditingId(p.id); setStep(0); setView("wizard"); };
+  const setD = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+  const updRow = (key, id, patch) => setDraft((d) => ({ ...d, [key]: d[key].map((x) => x.id === id ? { ...x, ...patch } : x) }));
+  const addRow = (key, blank) => setDraft((d) => ({ ...d, [key]: [...d[key], { id: uid(), ...blank }] }));
+  const delRow = (key, id) => setDraft((d) => ({ ...d, [key]: d[key].length > 1 ? d[key].filter((x) => x.id !== id) : d[key] }));
+  const copyLast = (key) => { const last = positions[0]; if (last && last[key]?.length) setDraft((d) => ({ ...d, [key]: last[key].map((x) => ({ ...x, id: uid() })) })); };
+  const applyBasInfo = () => { const m = basMeta(draft.bas); setDraft((d) => ({ ...d, beschreibung: d.beschreibung || m.lv || m.desc || "", einheit: d.einheit || m.me || "" })); };
+  const canNext = step !== 0 || (draft.sektion && draft.taetigkeit && draft.bas);
+
+  const savePosition = () => {
+    const exists = positions.some((p) => p.id === draft.id);
+    const list = exists ? positions.map((p) => p.id === draft.id ? draft : p) : [draft, ...positions];
+    setPositions(list); persist({ positions: list }); setView("home");
+  };
+  const deletePosition = (id) => { const list = positions.filter((p) => p.id !== id); setPositions(list); persist({ positions: list }); };
+  // Tagesweite Listen (Stillstand, Vorkommnisse) – direkt im day-Objekt, sofort gespeichert
+  const addDayRow = (key, blank) => { const n = { ...day, [key]: [...(day[key] || []), { id: uid(), ...blank }] }; setDay(n); persist({ day: n }); };
+  const updDayRow = (key, id, patch) => { const n = { ...day, [key]: (day[key] || []).map((x) => x.id === id ? { ...x, ...patch } : x) }; setDay(n); persist({ day: n }); };
+  const delDayRow = (key, id) => { const n = { ...day, [key]: (day[key] || []).filter((x) => x.id !== id) }; setDay(n); persist({ day: n }); };
+  const hasContent = positions.length > 0 || (day.stillstand || []).length > 0 || (day.vorkommnisse || []).length > 0;
+  const closeDay = () => {
+    if (!hasContent) return;
+    const arch = [{ id: uid(), day: { ...day }, positions, savedAt: new Date().toISOString() }, ...archive];
+    const nd = emptyDay(); setArchive(arch); setPositions([]); setDay(nd); persist({ archive: arch, positions: [], day: nd });
+  };
+  const loadArchived = (rec) => { setDay({ ...rec.day }); setPositions(rec.positions); setView("home"); };
+  const deleteArchived = (id) => { const arch = archive.filter((a) => a.id !== id); setArchive(arch); persist({ archive: arch }); };
+
+  const totals = useMemo(() => {
+    let ph = 0, gh = 0; const map = new Map();
+    positions.forEach((p) => {
+      ph += phOf(p); gh += ghOf(p);
+      if (p.bas && num(p.menge)) {
+        const k = `${p.bas}|${p.einheit || "-"}`;
+        const prev = map.get(k) || { bas: p.bas, einheit: p.einheit || "-", menge: 0 };
+        prev.menge += num(p.menge); map.set(k, prev);
+      }
+    });
+    return { ph, gh, mengen: [...map.values()].sort((a, b) => a.bas.localeCompare(b.bas)) };
+  }, [positions]);
+
+  /* ============ SETTINGS / LISTEN VERWALTEN ============ */
+  if (view === "settings") {
+    const needLogin = SB_ON && !session;
+    return (
+      <Shell>
+        <TopBar title="Listen verwalten" subtitle={SB_ON ? (session ? `Admin: ${session.email}` : "Admin-Anmeldung erforderlich") : "Lokaler Modus"}
+          left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white hover:bg-white/20"><ChevronLeft size={18} /></button>}
+          right={SB_ON
+            ? (session ? <button onClick={doLogout} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-300 hover:bg-white/10"><LogOut size={15} /> <span className="hidden sm:inline">Abmelden</span></button> : null)
+            : <button onClick={resetLists} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-300 hover:bg-white/10"><RotateCcw size={15} /> <span className="hidden sm:inline">Standard</span></button>} />
+        <main className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-4 sm:py-6">
+          {needLogin ? (
+            <LoginCard onSubmit={async (email, pw) => { const s = await sbLogin(email, pw); setSession(s); persistSession(s); }} />
+          ) : (
+            <>
+              <p className={`rounded-lg border px-3 py-2 text-sm ${SB_ON ? "border-emerald-200 bg-emerald-50/70 text-emerald-800" : "border-sky-200 bg-sky-50/70 text-slate-600"}`}>
+                {SB_ON
+                  ? <><ShieldCheck size={14} className="mr-1 inline" />Mit Supabase verbunden – Änderungen gelten sofort für alle Nutzer.</>
+                  : "Lokaler Modus (nur dieses Gerät). Trage in der App SUPABASE_URL + KEY ein und veröffentliche sie, damit Änderungen für alle gelten."}
+              </p>
+              {listsErr && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{listsErr}</p>}
+
+              <EditorCard icon={ListChecks} title="Sektionen" count={lists.sektionen.length}>
+                <StringListEditor items={lists.sektionen} onChange={(v) => setListKey("sektionen", v)} placeholder="z. B. Sektion 23" />
+              </EditorCard>
+              <EditorCard icon={ListChecks} title="Tätigkeiten" count={lists.taetigkeiten.length}>
+                <StringListEditor items={lists.taetigkeiten} onChange={(v) => setListKey("taetigkeiten", v)} placeholder="z. B. Spülbohrung" />
+              </EditorCard>
+              <EditorCard icon={Users} title="Rollen / Fachkräfte" count={lists.rollen.length}>
+                <StringListEditor items={lists.rollen} onChange={(v) => setListKey("rollen", v)} placeholder="z. B. Rohrleger" />
+              </EditorCard>
+              <BasEditor bas={lists.bas} onChange={(v) => setListKey("bas", v)} />
+              <GeraeteEditor geraete={lists.geraete} onChange={(v) => setListKey("geraete", v)} />
+              {SB_ON && session && <button onClick={resetLists} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"><RotateCcw size={15} /> Auf Standard zurücksetzen</button>}
+            </>
+          )}
+        </main>
+      </Shell>
+    );
+  }
+
+  /* ============ WIZARD ============ */
+  if (view === "wizard") {
+    return (
+      <Shell>
+        <TopBar title={editingId ? "Leistung bearbeiten" : "Neue Leistung"} subtitle={`Schritt ${step + 1}/${STEPS.length} · ${STEPS[step]}`}
+          left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white hover:bg-white/20" aria-label="Abbrechen"><X size={18} /></button>} />
+        <div className="mx-auto max-w-3xl px-4 pt-4">
+          <div className="flex items-center gap-1.5">
+            {STEPS.map((s, i) => (
+              <button key={s} onClick={() => (i < step || canNext) && setStep(i)} disabled={i > step && !canNext} className="group flex-1 text-left">
+                <div className={`h-1.5 rounded-full transition ${i <= step ? "bg-amber-500" : "bg-slate-200"}`} />
+                <span className={`mt-1 hidden text-[10px] font-semibold uppercase tracking-wider sm:block ${i === step ? "text-amber-700" : i < step ? "text-slate-500" : "text-slate-300"}`}>{s}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <main className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-4">
+          {step === 0 && (
+            <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <Field label="Sektion"><Combo value={draft.sektion} onChange={(v) => setD("sektion", v)} options={sektOpts} /></Field>
+              {(() => { const si = sektInfo(draft.sektion); return si ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-sm">
+                  <div className="flex flex-wrap gap-x-5 gap-y-1">
+                    <span className="text-slate-500">km <b className="text-slate-800">{si.kmVon} – {si.kmBis}</b></span>
+                    <span className="text-slate-500">Segment <b className="text-slate-800">{si.segment}</b></span>
+                    <span className="text-slate-500">Bauabschnitt <b className="text-slate-800">{si.ba}</b></span>
+                  </div>
+                  {si.bauwerke.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Bauwerke:</span>
+                      {si.bauwerke.map((b, i) => <span key={i} className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-700">{b}</span>)}
+                    </div>
+                  )}
+                </div>
+              ) : null; })()}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label>Vorhabenübergreifend</Label>
+                  <div className="flex gap-2">
+                    {["Ja", "Nein"].map((o) => (
+                      <button key={o} onClick={() => setD("vorhabenUeb", o)} className={`min-h-[46px] flex-1 rounded-lg border px-3 text-sm font-semibold transition ${draft.vorhabenUeb === o ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`}>{o}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <Label>Vorhaben</Label>
+                  <div className="flex gap-2">
+                    {VORHABEN_OPTS.map((o) => (
+                      <button key={o.value} onClick={() => setD("vorhaben", o.value)} className={`min-h-[46px] flex-1 rounded-lg border px-2 text-sm font-semibold transition ${draft.vorhaben === o.value ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`}>{o.label}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-3">
+                <p className="mb-2 text-xs font-semibold text-slate-700">Vorhaben-Auswahl <span className="font-normal text-slate-500">· rechte Seite = OST = V4 · linke Seite = WEST = V3</span></p>
+                <img src={VORHABEN_IMG} alt="Vorhaben Querschnitt – Graben, Schutzstreifen, HGÜ 525 kV" className="w-full rounded border border-slate-200 bg-white" />
+              </div>
+              <Field label="Tätigkeit"><Combo value={draft.taetigkeit} onChange={(v) => setD("taetigkeit", v)} options={taetOpts} /></Field>
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <Label hint="(Leistungs-/Kostenschlüssel)">BAS</Label>
+                  {draft.bas && <button onClick={() => setBasModal(draft.bas)} className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:underline"><Info size={13} /> Was ist enthalten?</button>}
+                </div>
+                <Combo value={draft.bas} onChange={(v) => setD("bas", v)} options={basOpts} />
+              </div>
+              {draft.bas && (() => { const m = basMeta(draft.bas); return (m.lv || m.desc) ? (
+                <div className="rounded-lg border border-sky-200 bg-sky-50/70 p-3">
+                  <div className="flex items-start gap-2">
+                    <Info size={15} className="mt-0.5 shrink-0 text-sky-700" />
+                    <div className="min-w-0 flex-1">
+                      {m.lv && <p className="text-sm"><span className="font-semibold text-slate-800">LV-Leistung: </span><span className="text-slate-700">{m.lv}</span>{m.me && <span className="ml-1.5 rounded bg-sky-100 px-1.5 py-0.5 font-mono text-xs text-sky-800">{m.me}</span>}</p>}
+                      {m.desc && <p className="text-sm text-slate-600">{m.desc}</p>}
+                      <button onClick={applyBasInfo} className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:underline"><Wand2 size={12} /> Beschreibung & Einheit übernehmen</button>
+                    </div>
+                  </div>
+                </div>
+              ) : null; })()}
+              {!canNext && <p className="text-xs text-slate-400">Sektion, Tätigkeit und BAS auswählen, um fortzufahren.</p>}
+            </div>
+          )}
+
+          {step === 1 && (
+            <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <Field label="Beschreibung (Detail)">
+                <textarea rows={4} className={`${inputCls} min-h-[110px] py-2`} value={draft.beschreibung} onChange={(e) => setD("beschreibung", e.target.value)} placeholder="Was wurde konkret ausgeführt? Ort, Abschnitt, Besonderheiten, Behinderungen …" />
+              </Field>
+              <div className="grid max-w-sm grid-cols-2 gap-3">
+                <Field label="Menge"><input type="number" inputMode="decimal" className={inputCls} value={draft.menge} onChange={(e) => setD("menge", e.target.value)} placeholder="0" /></Field>
+                <Field label="Einheit"><Combo value={draft.einheit} onChange={(v) => setD("einheit", v)} options={EINHEITEN.map((u) => ({ value: u, label: u }))} placeholder="–" /></Field>
+              </div>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-sm text-slate-500">Wer hat an dieser Leistung gearbeitet?</p>
+                {positions[0]?.personal?.some((x) => x.rolle) && <button onClick={() => copyLast("personal")} className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:underline"><Copy size={13} /> Letzte übernehmen</button>}
+              </div>
+              <div className="space-y-3">
+                {draft.personal.map((p, i) => (
+                  <RowShell key={p.id} index={i} onRemove={() => delRow("personal", p.id)}>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <Field label="Rolle / Fachkraft"><Combo value={p.rolle} onChange={(v) => updRow("personal", p.id, { rolle: v })} options={rollenOpts} /></Field>
+                      <Field label="Anzahl Personen"><input type="number" inputMode="numeric" className={inputCls} value={p.anzahl} onChange={(e) => updRow("personal", p.id, { anzahl: e.target.value })} placeholder="1" /></Field>
+                      <Field label="Stunden / Person"><input type="number" inputMode="decimal" className={inputCls} value={p.stunden} onChange={(e) => updRow("personal", p.id, { stunden: e.target.value })} placeholder="0" /></Field>
+                    </div>
+                    {num(p.anzahl) > 0 && num(p.stunden) > 0 && <p className="mt-2 text-right text-xs text-slate-500">= <span className="font-mono font-semibold text-slate-700">{fmt(num(p.anzahl) * num(p.stunden))}</span> Pers.-Std.</p>}
+                  </RowShell>
+                ))}
+              </div>
+              <AddBtn onClick={() => addRow("personal", { rolle: "", anzahl: "", stunden: "" })}>Rolle hinzufügen</AddBtn>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-sm text-slate-500">Welche Geräte waren im Einsatz?</p>
+                {positions[0]?.geraete?.some((x) => x.typ) && <button onClick={() => copyLast("geraete")} className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:underline"><Copy size={13} /> Letzte übernehmen</button>}
+              </div>
+              <div className="space-y-3">
+                {draft.geraete.map((g, i) => {
+                  const units = unitsOf(g.typ);
+                  return (
+                    <RowShell key={g.id} index={i} onRemove={() => delRow("geraete", g.id)}>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field label="Gerätetyp"><Combo value={g.typ} onChange={(v) => updRow("geraete", g.id, { typ: v, geraet: "" })} options={geraeteTypOpts} /></Field>
+                        <Field label="Gerät (genau)" hint={g.typ && units.length === 0 ? "(in Listen ergänzen)" : ""}>
+                          <Combo value={g.geraet} onChange={(v) => updRow("geraete", g.id, { geraet: v })} options={units.map((u) => ({ value: u, label: u }))} placeholder={g.typ ? (units.length ? "– wählen –" : "keine hinterlegt") : "erst Typ wählen"} />
+                        </Field>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-3 sm:max-w-xs">
+                        <Field label="Anzahl"><input type="number" inputMode="numeric" className={inputCls} value={g.anzahl} onChange={(e) => updRow("geraete", g.id, { anzahl: e.target.value })} placeholder="1" /></Field>
+                        <Field label="Betriebsstunden"><input type="number" inputMode="decimal" className={inputCls} value={g.stunden} onChange={(e) => updRow("geraete", g.id, { stunden: e.target.value })} placeholder="0" /></Field>
+                      </div>
+                    </RowShell>
+                  );
+                })}
+              </div>
+              <AddBtn onClick={() => addRow("geraete", { typ: "", geraet: "", anzahl: "1", stunden: "" })}>Gerät hinzufügen</AddBtn>
+            </div>
+          )}
+
+          {step === 4 && (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3"><Layers size={16} className="text-amber-600" /><h3 className="text-sm font-bold">Leistung</h3></div>
+                <div className="space-y-1.5 px-4 py-3 text-sm">
+                  <SumLine k="Sektion" v={draft.sektion || "—"} />
+                  <SumLine k="Vorhaben" v={`${draft.vorhaben || "—"}${draft.vorhabenUeb === "Ja" ? " · übergreifend" : ""}`} />
+                  <SumLine k="Tätigkeit" v={draft.taetigkeit || "—"} />
+                  <SumLine k="BAS" v={draft.bas ? `${draft.bas} – ${basName(draft.bas)}` : "—"} />
+                  <SumLine k="Menge" v={num(draft.menge) ? `${fmt(num(draft.menge))} ${draft.einheit}` : "—"} />
+                  {draft.beschreibung && <p className="pt-1 text-slate-600">{draft.beschreibung}</p>}
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <MiniSum title="Personal" icon={Users} total={`${fmt(phOf(draft))} Pers.-Std.`} rows={draft.personal.filter((p) => p.rolle).map((p) => `${p.anzahl || "?"}× ${p.rolle} · ${p.stunden || 0} Std.`)} />
+                <MiniSum title="Geräte" icon={Truck} total={`${fmt(ghOf(draft))} Std.`} rows={draft.geraete.filter((g) => g.typ).map((g) => `${g.anzahl || 1}× ${geraetLabel(g)} · ${g.stunden || 0} Std.`)} />
+              </div>
+            </div>
+          )}
+        </main>
+
+        <div className="sticky bottom-0 border-t border-slate-200 bg-slate-100/95 backdrop-blur print:hidden">
+          <div className="mx-auto flex max-w-3xl items-center gap-2 px-3 py-3 sm:px-4">
+            {step > 0
+              ? <button onClick={() => setStep((s) => s - 1)} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"><ChevronLeft size={16} /> Zurück</button>
+              : <button onClick={() => setView("home")} className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Abbrechen</button>}
+            <div className="flex-1" />
+            {step < STEPS.length - 1
+              ? <button onClick={() => canNext && setStep((s) => s + 1)} disabled={!canNext} className={`inline-flex items-center gap-1 rounded-lg px-5 py-3 text-sm font-bold text-white transition ${canNext ? "bg-slate-900 hover:bg-slate-800" : "cursor-not-allowed bg-slate-300"}`}>Weiter <ChevronRight size={16} /></button>
+              : <button onClick={savePosition} className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-5 py-3 text-sm font-bold text-white hover:bg-amber-700"><Save size={18} /> Position speichern</button>}
+          </div>
+        </div>
+        {basModal && <BasModal meta={basMeta(basModal)} code={basModal} onClose={() => setBasModal(null)} />}
+      </Shell>
+    );
+  }
+
+  /* ============ ARCHIV ============ */
+  if (view === "archive") {
+    return (
+      <Shell>
+        <TopBar title="Frühere Berichte" subtitle={`${archive.length} abgeschlossen`}
+          left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white hover:bg-white/20"><ChevronLeft size={18} /></button>} />
+        <main className="mx-auto max-w-3xl space-y-2 px-3 py-4 sm:px-4 sm:py-6">
+          {archive.length === 0 ? (
+            <div className="rounded-xl border border-slate-200 bg-white py-12 text-center text-slate-500"><Archive className="mx-auto mb-3 text-slate-300" size={40} /><p>Noch keine abgeschlossenen Berichte.</p></div>
+          ) : archive.map((rec) => (
+            <div key={rec.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+              <DateBadge iso={rec.day.datum} />
+              <div className="min-w-0 flex-1"><p className="truncate font-semibold">{rec.day.projekt || "—"}</p><p className="text-xs text-slate-500">{dateDE(rec.day.datum)} · {rec.positions.length} Position(en)</p></div>
+              <button onClick={() => { setPreviewData({ day: rec.day, positions: rec.positions }); setView("preview"); }} className="rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-slate-50" aria-label="Vorschau"><FileText size={15} /></button>
+              <button onClick={() => loadArchived(rec)} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FolderOpen size={15} /> Öffnen</button>
+              <button onClick={() => deleteArchived(rec.id)} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={16} /></button>
+            </div>
+          ))}
+        </main>
+      </Shell>
+    );
+  }
+
+  /* ============ VORSCHAU / DRUCK / EXPORT ============ */
+  if (view === "preview") {
+    const { day: d, positions: ps } = previewData;
+    const W = WETTER.find((w) => w.key === d.wetter);
+    const tot = ps.reduce((a, p) => ({ ph: a.ph + phOf(p), gh: a.gh + ghOf(p) }), { ph: 0, gh: 0 });
+    return (
+      <Shell>
+        <div className="mx-auto max-w-3xl px-3 py-3 sm:px-4">
+          <div className="mb-3 flex flex-wrap items-center gap-2 print:hidden">
+            <button onClick={() => setView(previewData.back || "home")} className="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-slate-900"><ChevronLeft size={16} /> Zurück</button>
+            <div className="flex-1" />
+            <button onClick={() => exportExcel(d, ps, basName)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FileSpreadsheet size={16} /> Excel</button>
+            <button onClick={() => exportXML(d, ps, basName)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FileCode2 size={16} /> XML</button>
+            <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Printer size={16} /> PDF</button>
+            <button onClick={() => shareReport(d, ps, basName)} className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"><Share2 size={16} /> Senden</button>
+          </div>
+          <div className="rounded-xl border border-slate-300 bg-white p-6 shadow-sm sm:p-8 print:border-0 print:p-0">
+            <div className="mb-5 flex items-start justify-between border-b-2 border-slate-900 pb-4">
+              <div><h1 className="text-2xl font-black tracking-tight">BAUTAGESBERICHT</h1><p className="text-sm text-slate-600">{d.projekt || "—"}</p></div>
+              <div className="text-right text-sm"><p className="font-bold">{dateDE(d.datum)}</p><p className="text-slate-600">{W?.label} · {d.tempMin || "–"}° / {d.tempMax || "–"}° C</p>{(d.arbeitStart || d.arbeitEnde) && <p className="text-slate-600">Arbeitszeit: {d.arbeitStart || "–"}–{d.arbeitEnde || "–"}</p>}{d.gewerk && <p className="text-slate-600">Gewerk: {d.gewerk}</p>}{d.bauleiter && <p className="text-slate-600">Bauleiter: {d.bauleiter}</p>}</div>
+            </div>
+            <div className="mb-5 flex flex-wrap gap-4 text-sm">
+              <span className="text-slate-500">Positionen: <b className="text-slate-900">{ps.length}</b></span>
+              <span className="text-slate-500">Personal gesamt: <b className="font-mono text-slate-900">{fmt(tot.ph)}</b> Std.</span>
+              <span className="text-slate-500">Geräte gesamt: <b className="font-mono text-slate-900">{fmt(tot.gh)}</b> Std.</span>
+            </div>
+            {ps.map((p, i) => (
+              <div key={p.id} className="mb-4 break-inside-avoid rounded-lg border border-slate-200 p-4">
+                <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span className="rounded bg-slate-900 px-2 py-0.5 font-mono text-xs font-bold text-amber-400">{p.bas}</span>
+                  <b className="text-slate-900">{basName(p.bas)}</b>
+                  <span className="text-sm text-slate-500">{p.sektion}{p.vorhaben ? ` · ${p.vorhaben}` : ""}{p.vorhabenUeb === "Ja" ? " · übergr." : ""} · {p.taetigkeit}</span>
+                  {num(p.menge) > 0 && <span className="ml-auto font-mono text-sm font-semibold text-slate-900">{fmt(num(p.menge))} {p.einheit}</span>}
+                </div>
+                {p.beschreibung && <p className="mb-3 text-sm text-slate-600">{p.beschreibung}</p>}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <MiniTable head={["Rolle", "Anz.", "Std."]} rows={p.personal.filter((x) => x.rolle).map((x) => [x.rolle, x.anzahl, x.stunden])} foot={`${fmt(phOf(p))} Pers.-Std.`} />
+                  <MiniTable head={["Gerät", "Anz.", "Std."]} rows={p.geraete.filter((x) => x.typ).map((x) => [geraetLabel(x), x.anzahl, x.stunden])} foot={`${fmt(ghOf(p))} Std.`} />
+                </div>
+              </div>
+            ))}
+            {ps.length === 0 && <p className="text-slate-400">Keine Positionen erfasst.</p>}
+
+            {(d.stillstand || []).filter((s) => s.start || s.ende || s.grund || s.sektion).length > 0 && (
+              <div className="mt-6 break-inside-avoid">
+                <h2 className="mb-2 border-b border-slate-300 pb-1 text-sm font-bold uppercase tracking-wider text-slate-700">Stillstandszeiten</h2>
+                <table className="w-full border-collapse text-sm">
+                  <thead><tr className="border-b border-slate-200 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    <th className="py-1 pr-2">Nr.</th><th className="py-1 pr-2">Sektion</th><th className="py-1 pr-2">Vorhaben</th><th className="py-1 pr-2">Start</th><th className="py-1 pr-2">Ende</th><th className="py-1">Begründung</th>
+                  </tr></thead>
+                  <tbody>
+                    {(d.stillstand || []).filter((s) => s.start || s.ende || s.grund || s.sektion).map((s, i) => (
+                      <tr key={s.id} className="border-b border-slate-100 align-top text-slate-700">
+                        <td className="py-1 pr-2">{i + 1}</td><td className="py-1 pr-2">{s.sektion || "—"}</td><td className="py-1 pr-2">{s.vorhaben || "—"}</td>
+                        <td className="py-1 pr-2 font-mono">{s.start || "—"}</td><td className="py-1 pr-2 font-mono">{s.ende || "—"}</td><td className="py-1">{s.grund || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {(d.vorkommnisse || []).filter((v) => (v.text || "").trim()).length > 0 && (
+              <div className="mt-6 break-inside-avoid">
+                <h2 className="mb-2 border-b border-slate-300 pb-1 text-sm font-bold uppercase tracking-wider text-slate-700">Besondere Vorkommnisse / Besucher</h2>
+                <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-700">
+                  {(d.vorkommnisse || []).filter((v) => (v.text || "").trim()).map((v) => <li key={v.id}>{v.text}</li>)}
+                </ol>
+              </div>
+            )}
+
+            <p className="mt-6 text-[11px] text-slate-400">Bautagesbericht-Prototyp · {dateDE(d.datum)}</p>
+          </div>
+        </div>
+      </Shell>
+    );
+  }
+
+  /* ============ HOME ============ */
+  return (
+    <Shell>
+      <TopBar title="Bautagesbericht" subtitle="Tägliche Leistungserfassung"
+        right={
+          <div className="flex gap-1">
+            <button onClick={() => setView("settings")} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-300 hover:bg-white/10"><Settings size={15} /> <span className="hidden sm:inline">Listen</span></button>
+            <button onClick={() => setView("archive")} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-300 hover:bg-white/10"><Archive size={15} /> <span className="hidden sm:inline">Berichte</span></button>
+          </div>
+        } />
+      <main className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-4 sm:py-6">
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Projekt"><input className={inputCls} value={day.projekt} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, projekt: v })); }} placeholder="Bauvorhaben" /></Field>
+            <Field label="Datum"><input type="date" className={inputCls} value={day.datum} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, datum: v })); }} /></Field>
+            <Field label="Bauleiter / Ersteller"><input className={inputCls} value={day.bauleiter} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, bauleiter: v })); }} placeholder="Name" /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Temp. min °C"><input type="number" className={inputCls} value={day.tempMin} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, tempMin: v })); }} /></Field>
+              <Field label="Temp. max °C"><input type="number" className={inputCls} value={day.tempMax} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, tempMax: v })); }} /></Field>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Arbeitszeit Start"><input type="time" className={inputCls} value={day.arbeitStart} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, arbeitStart: v })); }} /></Field>
+              <Field label="Arbeitszeit Ende"><input type="time" className={inputCls} value={day.arbeitEnde} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, arbeitEnde: v })); }} /></Field>
+            </div>
+            <Field label="Gewerk" hint="(frei)"><input className={inputCls} value={day.gewerk} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, gewerk: v })); }} placeholder="z. B. Tiefbau / HDD / Schweißkolonne" /></Field>
+          </div>
+          <div className="mt-4">
+            <Label>Wetter</Label>
+            <div className="flex flex-wrap gap-2">
+              {WETTER.map(({ key, label, Icon }) => (
+                <button key={key} onClick={() => setDay((s) => ({ ...s, wetter: key }))} className={`inline-flex min-h-[44px] items-center gap-2 rounded-lg border px-3 text-sm font-medium transition ${day.wetter === key ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`}><Icon size={16} /> {label}</button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <div className="overflow-hidden rounded-xl border-l-4 border-sky-600 border-y border-r border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5"><Gauge size={16} className="text-sky-600" /><h2 className="text-sm font-bold">Tagesübersicht</h2><span className="hidden text-xs text-slate-400 sm:inline">— Summe aller Positionen, Basis für die Leistungsmeldung</span></div>
+          <div className="grid grid-cols-3 divide-x divide-slate-100">
+            <Metric value={fmt(totals.ph)} unit="Std." label="Personal" />
+            <Metric value={fmt(totals.gh)} unit="Std." label="Geräte" />
+            <Metric value={String(positions.length)} unit="" label="Positionen" />
+          </div>
+          {totals.mengen.length > 0 && (
+            <div className="border-t border-slate-100 px-4 py-3">
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Mengen nach BAS</p>
+              <div className="flex flex-wrap gap-1.5">
+                {totals.mengen.map((m, i) => (
+                  <span key={i} className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-xs">
+                    <span className="font-mono font-bold text-slate-900">{m.bas}</span>
+                    <span className="hidden text-slate-500 sm:inline">{basName(m.bas)}</span>
+                    <span className="font-mono font-semibold text-sky-700">{fmt(m.menge)} {m.einheit}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <section>
+          <h2 className="mb-2 px-1 text-sm font-bold text-slate-700">Erfasste Leistungen <span className="text-slate-400">({positions.length})</span></h2>
+          {positions.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-white py-10 text-center"><ClipboardList className="mx-auto mb-3 text-slate-300" size={40} /><p className="font-medium text-slate-600">Noch keine Leistung erfasst.</p><p className="text-sm text-slate-400">Lege die erste Position über den Button unten an.</p></div>
+          ) : (
+            <div className="space-y-2">
+              {positions.map((p) => (
+                <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-slate-300">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 rounded bg-slate-900 px-2 py-1 font-mono text-xs font-bold text-amber-400">{p.bas}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold text-slate-900">{basName(p.bas)}</p>
+                      <p className="truncate text-xs text-slate-500">{p.sektion} · {p.taetigkeit}</p>
+                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                        {num(p.menge) > 0 && <span className="font-medium text-slate-700"><Layers size={11} className="mr-0.5 inline" />{fmt(num(p.menge))} {p.einheit}</span>}
+                        <span><Users size={11} className="mr-0.5 inline" />{fmt(phOf(p))} Std.</span>
+                        <span><Truck size={11} className="mr-0.5 inline" />{fmt(ghOf(p))} Std.</span>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <button onClick={() => startEdit(p)} className="rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-slate-50" aria-label="Bearbeiten"><Pencil size={15} /></button>
+                      <button onClick={() => deletePosition(p.id)} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Löschen"><Trash2 size={15} /></button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5"><Clock size={16} className="text-amber-600" /><h2 className="text-sm font-bold">Stillstandszeiten</h2><span className="hidden text-xs text-slate-400 sm:inline">— ganztägig, optional</span></div>
+          <div className="space-y-3 p-4">
+            {(day.stillstand || []).length === 0 && <p className="text-sm text-slate-400">Keine Stillstandszeiten.</p>}
+            {(day.stillstand || []).map((s, i) => (
+              <div key={s.id} className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                <div className="mb-2 flex items-center justify-between"><span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Stillstand {i + 1}</span><button onClick={() => delDayRow("stillstand", s.id)} className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={16} /></button></div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Sektion"><Combo value={s.sektion} onChange={(v) => updDayRow("stillstand", s.id, { sektion: v })} options={sektOpts} /></Field>
+                  <Field label="Vorhaben"><Combo value={s.vorhaben} onChange={(v) => updDayRow("stillstand", s.id, { vorhaben: v })} options={VORHABEN_STILL} placeholder="OST / WEST / Übergreifend" /></Field>
+                  <Field label="Startzeit *"><input type="time" className={inputCls} value={s.start || ""} onChange={(e) => updDayRow("stillstand", s.id, { start: e.target.value })} /></Field>
+                  <Field label="Endzeit *"><input type="time" className={inputCls} value={s.ende || ""} onChange={(e) => updDayRow("stillstand", s.id, { ende: e.target.value })} /></Field>
+                </div>
+                <div className="mt-3"><Field label="Begründung *"><input className={inputCls} value={s.grund || ""} onChange={(e) => updDayRow("stillstand", s.id, { grund: e.target.value })} placeholder="Grund des Stillstands" /></Field></div>
+              </div>
+            ))}
+            <AddBtn onClick={() => addDayRow("stillstand", { sektion: "", vorhaben: "", start: "", ende: "", grund: "" })}>Stillstandszeit hinzufügen</AddBtn>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5"><Info size={16} className="text-amber-600" /><h2 className="text-sm font-bold">Besondere Vorkommnisse / Besucher</h2></div>
+          <div className="space-y-3 p-4">
+            {(day.vorkommnisse || []).length === 0 && <p className="text-sm text-slate-400">Keine Einträge.</p>}
+            {(day.vorkommnisse || []).map((v, i) => (
+              <div key={v.id} className="flex items-start gap-2">
+                <span className="mt-3 w-5 shrink-0 text-right text-xs font-semibold text-slate-400">{i + 1}.</span>
+                <textarea rows={2} className={`${inputCls} py-2`} value={v.text || ""} onChange={(e) => updDayRow("vorkommnisse", v.id, { text: e.target.value })} placeholder="Vorkommnis, Besuch von Behörde/Bauherr, Lieferung, Unfall …" />
+                <button onClick={() => delDayRow("vorkommnisse", v.id)} className="mt-1.5 shrink-0 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={16} /></button>
+              </div>
+            ))}
+            <AddBtn onClick={() => addDayRow("vorkommnisse", { text: "" })}>Eintrag hinzufügen</AddBtn>
+          </div>
+        </section>
+
+        {hasContent && (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => { setPreviewData({ day, positions, back: "home" }); setView("preview"); }} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FileText size={16} /> Vorschau · PDF · Excel · XML</button>
+            <button onClick={closeDay} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"><CheckCircle2 size={16} /> Tag abschließen</button>
+          </div>
+        )}
+      </main>
+
+      <div className="sticky bottom-0 border-t border-slate-200 bg-slate-100/95 backdrop-blur print:hidden">
+        <div className="mx-auto max-w-3xl px-3 py-3 sm:px-4">
+          <button onClick={startNew} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-3.5 text-[15px] font-bold text-white shadow-sm transition hover:bg-amber-700"><Plus size={20} /> Neue Leistung erfassen</button>
+        </div>
+        <p className="px-4 pb-3 text-center text-[11px] text-slate-400">Prototyp · Daten + Listen gerätelokal gespeichert. Für die Freigabe an alle Nutzer → gemeinsame Datenquelle (siehe Chat).</p>
+      </div>
+      {basModal && <BasModal meta={basMeta(basModal)} code={basModal} onClose={() => setBasModal(null)} />}
+    </Shell>
+  );
+}
+
+/* ===================== KLEINTEILE ===================== */
+function Metric({ value, unit, label }) {
+  return (
+    <div className="px-3 py-3 text-center">
+      <p className="font-mono text-2xl font-bold leading-none text-slate-900">{value}<span className="ml-0.5 text-sm font-semibold text-slate-400">{unit}</span></p>
+      <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</p>
+    </div>
+  );
+}
+const SumLine = ({ k, v }) => (<div className="flex gap-3"><span className="w-24 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{k}</span><span className="font-medium text-slate-800">{v}</span></div>);
+function MiniSum({ title, icon: Icon, total, rows }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-2 flex items-center justify-between"><span className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-700"><Icon size={15} className="text-slate-400" /> {title}</span><span className="font-mono text-xs font-semibold text-sky-700">{total}</span></div>
+      {rows.length === 0 ? <p className="text-sm text-slate-400">—</p> : <ul className="space-y-1 text-sm text-slate-600">{rows.map((r, i) => <li key={i}>{r}</li>)}</ul>}
+    </div>
+  );
+}
+function MiniTable({ head, rows, foot }) {
+  return (
+    <div>
+      <table className="w-full border-collapse text-sm">
+        <thead><tr className="border-b border-slate-200">{head.map((h, i) => <th key={i} className={`py-1 text-[11px] font-bold uppercase tracking-wider text-slate-500 ${i === 0 ? "text-left" : "text-right"}`}>{h}</th>)}</tr></thead>
+        <tbody>
+          {rows.length === 0 ? <tr><td colSpan={head.length} className="py-1 text-slate-400">—</td></tr> :
+            rows.map((r, i) => <tr key={i} className="border-b border-slate-100">{r.map((c, j) => <td key={j} className={`py-1 text-slate-700 ${j === 0 ? "text-left" : "text-right font-mono"}`}>{c || "—"}</td>)}</tr>)}
+        </tbody>
+      </table>
+      <p className="mt-1 text-right text-[11px] font-semibold text-slate-500">∑ {foot}</p>
+    </div>
+  );
+}
+function DateBadge({ iso }) {
+  const dt = new Date(iso);
+  return (<div className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-lg bg-slate-900 text-white"><span className="text-[10px] leading-none text-amber-400">{dt.toLocaleDateString("de-DE", { month: "short" })}</span><span className="text-base font-bold leading-tight">{dt.getDate()}</span></div>);
+}
+function EditorCard({ icon: Icon, title, count, children }) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-amber-400"><Icon size={18} /></div>
+        <h2 className="flex-1 text-[15px] font-bold text-slate-900">{title}</h2>
+        {count !== undefined && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{count}</span>}
+      </div>
+      <div className="p-4 sm:p-5">{children}</div>
+    </section>
+  );
+}
+
+function BasEditor({ bas, onChange }) {
+  const [q, setQ] = useState("");
+  const ql = q.trim().toLowerCase();
+  const setRow = (i, patch) => onChange(bas.map((b, k) => (k === i ? { ...b, ...patch } : b)));
+  const del = (i) => onChange(bas.filter((_, k) => k !== i));
+  const add = () => onChange([{ code: "", name: "", group: "", desc: "" }, ...bas]);
+  const visible = bas.map((b, i) => ({ b, i })).filter(({ b }) => !ql || `${b.code} ${b.name} ${b.group} ${b.desc}`.toLowerCase().includes(ql));
+  return (
+    <EditorCard icon={ListChecks} title="BAS (mit Inhalt)" count={bas.length}>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="flex min-w-[180px] flex-1 items-center gap-2 rounded-lg border border-slate-300 px-3"><Search size={15} className="text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="BAS suchen…" className="min-h-[44px] w-full bg-transparent text-sm outline-none" /></div>
+        <button onClick={add} className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-600 hover:border-amber-500 hover:bg-amber-50 hover:text-amber-700"><Plus size={16} /> BAS</button>
+      </div>
+      <div className="space-y-3">
+        {visible.map(({ b, i }) => (
+          <div key={i} className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+            <div className="flex items-start gap-2">
+              <div className="grid flex-1 gap-2 sm:grid-cols-[110px_1fr]">
+                <input className={`${inputCls} font-mono`} value={b.code} placeholder="Code" onChange={(e) => setRow(i, { code: e.target.value })} />
+                <input className={inputCls} value={b.name} placeholder="Bezeichnung" onChange={(e) => setRow(i, { name: e.target.value })} />
+              </div>
+              <button onClick={() => del(i)} className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Löschen"><Trash2 size={16} /></button>
+            </div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-[110px_1fr]">
+              <input className={inputCls} value={b.group || ""} placeholder="Gruppe" onChange={(e) => setRow(i, { group: e.target.value })} />
+              <textarea rows={2} className={`${inputCls} py-2`} value={b.desc || ""} placeholder="Inhalt / was ist in diesem BAS enthalten…" onChange={(e) => setRow(i, { desc: e.target.value })} />
+            </div>
+          </div>
+        ))}
+        {visible.length === 0 && <p className="py-2 text-sm text-slate-400">Keine Treffer.</p>}
+      </div>
+    </EditorCard>
+  );
+}
+
+function GeraeteEditor({ geraete, onChange }) {
+  const setType = (i, typ) => onChange(geraete.map((g, k) => (k === i ? { ...g, typ } : g)));
+  const setUnits = (i, units) => onChange(geraete.map((g, k) => (k === i ? { ...g, units } : g)));
+  const delType = (i) => onChange(geraete.filter((_, k) => k !== i));
+  const addType = () => onChange([...geraete, { typ: "", units: [] }]);
+  return (
+    <EditorCard icon={Truck} title="Geräte (Typ → genaue Geräte)" count={geraete.length}>
+      <div className="space-y-3">
+        {geraete.map((g, i) => (
+          <div key={i} className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+            <div className="flex items-center gap-2">
+              <input className={`${inputCls} font-medium`} value={g.typ} placeholder="Gerätetyp (z. B. Kettenbagger)" onChange={(e) => setType(i, e.target.value)} />
+              <button onClick={() => delType(i)} className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Typ löschen"><Trash2 size={16} /></button>
+            </div>
+            <div className="mt-2 border-l-2 border-slate-200 pl-3">
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Genaue Geräte</p>
+              <StringListEditor items={g.units} onChange={(u) => setUnits(i, u)} placeholder="z. B. CAT 320 / Inv.-Nr. 4711" />
+            </div>
+          </div>
+        ))}
+      </div>
+      <AddBtn onClick={addType}>Gerätetyp hinzufügen</AddBtn>
+    </EditorCard>
+  );
+}
+
+function BasModal({ meta, code, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="rounded bg-slate-900 px-2 py-1 font-mono text-sm font-bold text-amber-400">{code}</span>
+            <h3 className="text-base font-bold text-slate-900">{meta.name}</h3>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={18} /></button>
+        </div>
+        {meta.lv && <p className="mb-2 text-sm"><span className="font-semibold text-slate-800">Verknüpfte LV-Leistung: </span><span className="text-slate-700">{meta.lv}</span>{meta.me && <span className="ml-1.5 rounded bg-sky-100 px-1.5 py-0.5 font-mono text-xs text-sky-800">{meta.me}</span>}</p>}
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Inhalt / Leistungsumfang</p>
+        <p className="text-sm leading-relaxed text-slate-700">{meta.desc || "Noch keine Beschreibung hinterlegt. Unter „Listen verwalten“ → BAS kannst du beschreiben, was in diesem BAS enthalten ist."}</p>
+      </div>
+    </div>
+  );
+}
+
+function LoginCard({ onSubmit }) {
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const submit = async () => {
+    if (!email || !pw) return;
+    setBusy(true); setErr("");
+    try { await onSubmit(email.trim(), pw); }
+    catch (e) { setErr(String(e?.message || e)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="mx-auto max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="mb-4 flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-amber-400"><Lock size={20} /></div>
+        <div><h2 className="font-bold text-slate-900">Admin-Anmeldung</h2><p className="text-xs text-slate-500">Nur zum Bearbeiten der Listen</p></div>
+      </div>
+      <div className="space-y-3">
+        <Field label="E-Mail"><input type="email" autoComplete="username" className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@firma.de" /></Field>
+        <Field label="Passwort"><input type="password" autoComplete="current-password" className={inputCls} value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="••••••••" /></Field>
+        {err && <p className="text-sm text-red-600">{err}</p>}
+        <button onClick={submit} disabled={busy || !email || !pw} className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-bold text-white transition ${busy || !email || !pw ? "cursor-not-allowed bg-slate-300" : "bg-amber-600 hover:bg-amber-700"}`}>
+          <LogIn size={18} /> {busy ? "Anmelden…" : "Anmelden"}
+        </button>
+      </div>
+      <p className="mt-4 text-xs text-slate-400">Poliere müssen sich nicht anmelden – sie nutzen die App direkt. Admin-Konten werden in Supabase angelegt (Authentication → Users).</p>
+    </div>
+  );
+}
+
+
+createRoot(document.getElementById("root")).render(React.createElement(App));
+
+</script>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("./sw.js").catch(function () {});
+  });
+}
+</script>
+</body>
+</html>
