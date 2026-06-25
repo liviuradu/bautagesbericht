@@ -1,33 +1,3 @@
-<!doctype html>
-<html lang="de">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Bautagesbericht</title>
-<meta name="theme-color" content="#0f172a" />
-<link rel="manifest" href="manifest.webmanifest" />
-<link rel="apple-touch-icon" href="icon-192.png" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"></script>
-<script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@18.3.1",
-    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client?deps=react@18.3.1",
-    "lucide-react": "https://esm.sh/lucide-react@0.383.0?deps=react@18.3.1",
-    "xlsx": "https://esm.sh/xlsx@0.18.5",
-    "jspdf": "https://esm.sh/jspdf@2.5.1",
-    "jspdf-autotable": "https://esm.sh/jspdf-autotable@3.8.2?deps=jspdf@2.5.1"
-  }
-}
-</script>
-<style>html,body,#root{height:100%}body{margin:0;background:#f1f5f9}#boot{font-family:system-ui;color:#64748b;padding:24px;text-align:center}</style>
-</head>
-<body>
-<div id="root"><div id="boot">Lädt Bautagesbericht…</div></div>
-<script type="text/babel" data-type="module" data-presets="react">
 import React, { useState, useEffect, useMemo, Fragment } from "react";
 import {
   HardHat, Plus, Trash2, Save, FileText, ChevronLeft, ChevronRight, ChevronDown,
@@ -37,7 +7,6 @@ import {
   LogIn, LogOut, Lock, ShieldCheck, Cloud as CloudIcon, Clock,
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import { createRoot } from "react-dom/client";
 
 /* ===================== SUPABASE (REST + Auth via fetch, ohne Bibliothek) =====================
    Hier die beiden Werte aus deinem Supabase-Projekt eintragen, dann auf GitHub veröffentlichen.
@@ -1308,17 +1277,3 @@ function LoginCard({ onSubmit }) {
     </div>
   );
 }
-
-
-createRoot(document.getElementById("root")).render(React.createElement(App));
-
-</script>
-<script>
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", function () {
-    navigator.serviceWorker.register("./sw.js").catch(function () {});
-  });
-}
-</script>
-</body>
-</html>
