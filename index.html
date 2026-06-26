@@ -148,6 +148,9 @@ const BAS_GROUPS = [
   ["Kombiniert", [["5041", "Kom.-Abladen und Trassieren"], ["5044", "Kom.-Schweißarbeiten / Verbinden"]]],
   ["Rückverfüllung", [["601", "Oberboden Rückverfüllung Kabelgräben"], ["602", "Unterboden Rückverfüllung Kabelgräben"]]],
   ["Casingrohre", [["70", "Casingrohre liefern, einbringen und Rückbau"]]],
+  ["HDD-Bohrung", [["H01", "HDD – Pilotbohrung (prov.)"], ["H02", "HDD – Aufweiten/Räumen (prov.)"], ["H03", "HDD – Bohrspülung/Bentonit aufbereiten (prov.)"]]],
+  ["Wasserhaltung", [["W01", "Wasserhaltung – einrichten (prov.)"], ["W02", "Wasserhaltung – vorhalten/betreiben (prov.)"], ["W03", "Wasserhaltung – rückbauen (prov.)"]]],
+  ["Vortrieb", [["V01", "Rohrvortrieb/Microtunneling (prov.)"]]],
 ];
 // Referenz: BAS -> verknüpfte LV-Leistung (Kurztext/ME, aus LV-Datei) + Standard-Inhaltstext (editierbar).
 const BAS_EXTRA = {
@@ -211,13 +214,70 @@ const BAS_EXTRA = {
 };
 // Ergänzung aus "BAS-Verteilung": Klartext ("Was steckt drin") + "Wann wählen" je BAS (per Python injiziert).
 const BAS_INFO_EXT = {"031": {"drin": "Zentrale (Haupt-)Baustelleneinrichtung herstellen: Haupt-/Lagerplätze und die AG-Container (Baubüro, Besuchercontainer) auf- und abbauen, Oberboden auf den BE-Flächen abtragen und lagern, Schottertragschicht und Tiefenlockerung, Baustelle einrichten.","wann": "Einmalig für das EINRICHTEN der zentralen Baustelle (nicht je Abschnitt). Für Auf-/Abbau der Haupt-BE und der AG-Container."},"032": {"drin": "Vorhalten (Miete/Betrieb/Unterhalt) der zentralen Baustelleneinrichtung und der AG-Container über die Bauzeit.","wann": "Für die laufende (monatliche) VORHALTUNG der Haupt-BE – nicht für Auf-/Abbau."},"033": {"drin": "Zentrale Baustelle am Bauende räumen, Flächen zurückbauen und wiederherstellen.","wann": "Nur für die End-RÄUMUNG der zentralen Baustelle."},"034": {"drin": "Baustelleneinrichtung für die Querungen/HDD-Bohrplätze auf- und abbauen (je Querungsbauwerk, geschlossene Bauweise/Bohrung).","wann": "Für das EINRICHTEN eines HDD-/Querungs-Bohrplatzes, pro Querung."},"035": {"drin": "Entsorgung von Aushub-/Kabelgraben-Material (horizontunabhängig) nach EBV-Zuordnung (z. B. BM-0/BG-0): belastetes/überschüssiges Material abfahren und entsorgen.","wann": "Für die ENTSORGUNG von nicht wiederverwendbarem Aushub (Deponie/EBV-Klasse). ACHTUNG: Code 35 doppelt – hier ENTSORGUNG, nicht BE Querung."},"036": {"drin": "Querungs-/HDD-Bohrplatz am Ende räumen (je Querung).","wann": "Für die RÄUMUNG eines HDD-/Querungsplatzes."},"037": {"drin": "Komplette Baustelleneinrichtung für die archäologische Begleitung/Grabungen: Bauzaun, Schutzzaun, Beleuchtung, Witterungsschutz-Einhausung (Zelt) mit Heizung, mobile Wärme-/Stromerzeuger, Grabungsschutz (Sandabdeckung) – auf-/abbauen, umsetzen, vorhalten, räumen.","wann": "Für ALLE BE-Leistungen rund um archäologische Untersuchungsflächen (Zelt/Heizung/Zaun/Strom)."},"051": {"drin": "Äußere (Haupt-)Baustraßen bauen: Ober-/Unterboden abtragen, Planum, Geotextil/Kombigitter, Schottertragschicht 40–70 cm, Lastverteilungsplatten, Dammschüttung, Bankett, Asphalttragdeckschicht; später trennen/rückbauen.","wann": "Für die GROSSEN Zufahrts-/Hauptbaustraßen außerhalb der Trasse."},"052": {"drin": "Innere Baustraßen (auf/entlang der Trasse): Planum, Geotextil, Schottertragschicht 30–40 cm, Lastverteilungsplatten.","wann": "Für die LEICHTEREN inneren Fahrwege im Trassenbereich."},"101": {"drin": "Oberboden (A-Horizont/Mutterboden) auf den Trassenabschnitten abtragen und getrennt lagern (auch im Leitungsbereich).","wann": "Für den getrennten MUTTERBODEN-ABTRAG vor dem Aushub, je Abschnitt."},"102": {"drin": "Oberboden-Mieten für längere Zwischenlagerung mit Zwischenbegrünung (Abtrag/Lagerung).","wann": "Wenn der gelagerte Oberboden zwischenbegrünt / länger gemietet wird."},"103": {"drin": "Oberboden des AG wieder andecken/auftragen (Flächen, Einzel- und Kleinflächen) – Rekultivierung.","wann": "Für das WIEDERAUFTRAGEN des Mutterbodens nach der Verfüllung."},"201": {"drin": "Unterboden (B-Horizont) ausheben und getrennt lagern; Planum zur archäologischen Bewertung; Bodenabtrag B+C.","wann": "Für den getrennten B-HORIZONT-AUSHUB."},"202": {"drin": "Unterboden-Miete (B-Horizont) mit Zwischenbegrünung / Planum.","wann": "Bei Zwischenlagerung/Begrünung des Unterbodens."},"203": {"drin": "Unterboden (B-Horizont) des AG wieder andecken – Rekultivierung.","wann": "Für das WIEDERAUFTRAGEN des B-Horizonts."},"251": {"drin": "Eigentlicher Grabenaushub: Aushub C-Horizont (Grabensohle, auch oberhalb der Bettungszone) ausheben und lagern; Zulage Fels.","wann": "Für den GRABENAUSHUB der Kabeltrasse (C-Horizont/Fels)."},"252": {"drin": "Rückverfüllung des Grabens im C-Horizont-Bereich (mit Aushub-/geeignetem Material).","wann": "Für die RÜCKVERFÜLLUNG der Grabensohle (über der Bettung)."},"261": {"drin": "Bettung aus Sand/Kies/Splitt liefern und in die Leitungszone einbauen.","wann": "Wenn die Bettung aus SAND/KIES/SPLITT besteht."},"262": {"drin": "Bettung aus Flüssigboden (verflüssigtes/aufbereitetes Material).","wann": "Bei FLÜSSIGBODEN-Bettung."},"263": {"drin": "Boden für die Bettungsaufbereitung fördern (Teilleistung).","wann": "Teilleistung BODEN FÖRDERN für die Bettung."},"264": {"drin": "Aushubboden für die Wiederverwendung als Bettung aufbereiten (Teilleistung).","wann": "Teilleistung BODEN AUFBEREITEN für die Bettung."},"265": {"drin": "Aufbereitetes/geliefertes Bettungsmaterial in die Leitungszone einbauen (Haupt-Bettungsposition über die Abschnitte).","wann": "Für den EINBAU der Bettung rund um die Rohre (Standardfall)."},"301": {"drin": "Grabenverbau (Verbaukästen/Spundbohlen) je nach Grabentiefe/-breite herstellen und einbauen (H 1,75–4 m).","wann": "Für das EINBAUEN des Grabenverbaus."},"302": {"drin": "Vorhalten des Grabenverbaus über die Standzeit.","wann": "Für die laufende VORHALTUNG des Verbaus."},"303": {"drin": "Grabenverbau ziehen/ausbauen/rückbauen.","wann": "Für den AUSBAU des Verbaus."},"35": {"drin": "Entsorgung von Aushub-/Kabelgraben-Material (horizontunabhängig) nach EBV-Zuordnung (z. B. BM-0/BG-0): belastetes/überschüssiges Material abfahren und entsorgen.","wann": "Für die ENTSORGUNG von nicht wiederverwendbarem Aushub (Deponie/EBV-Klasse). ACHTUNG: Code 35 doppelt – hier ENTSORGUNG, nicht BE Querung."},"401": {"drin": "Geotextil/Kombigitter (Zugfestigkeit 120 kN/m) liefern und verlegen (Trennschicht/Grabenschutz).","wann": "Für den EINBAU von Geotextil/Kombigitter."},"402": {"drin": "Geotextil/Kombigitter wieder aufnehmen/zurückbauen.","wann": "Für den RÜCKBAU des Geotextils."},"501A": {"drin": "Rohrleitung der Querung molchen und kalibrieren + Qualitätsprüfung der Kabelschutzrohre (HGÜ, LWL, diverse DA): Reinigungs-/Kalibriermolch durchziehen, Maßhaltigkeit prüfen.","wann": "Für MOLCHEN/KALIBRIEREN + Qualitätsprüfung der fertigen Querungsrohre (Bohrung)."},"501B": {"drin": "Qualitätsprüfung der Kabelschutzrohre der Querung (HGÜ+LWL, DA 315/280): Dichtheits-/Maßprüfung.","wann": "Speziell für die QUALITÄTSPRÜFUNG (ohne Molchen) der Querungsrohre."},"5011A": {"drin": "Trassieren/Auslegen und Vorbereiten der Rohrstränge der Querung; Kabelschutzrohre (HGÜ/LWL) abrufen und verschweißen.","wann": "Für das TRASSIEREN/Auslegen des Rohrstrangs vor dem Einzug (Bohrung)."},"5011B": {"drin": "Kabelschutzrohre an der Querung anliefern/abladen und bereitstellen (HGÜ/LWL, Nachrichten-/Monitoringkabel-Rohre) abrufen.","wann": "Für das ABLADEN/Bereitstellen der Rohre an der Bohrung."},"5012": {"drin": "Schweißplatz für den Rohrstrang der Querung auf- und abbauen (Stumpfschweißen KSR, Stahlschutzrohr DA 219/323).","wann": "Für AUF-/ABBAU des SCHWEISSPLATZES an der Bohrung."},"5013": {"drin": "Rollenlaufbahn/Ablaufbahn (Arbeitsbereich zum Auslegen des Strangs) herrichten, auf- und abbauen.","wann": "Für AUF-/ABBAU der ROLLEN-/ABLAUFBAHN an der Bohrung."},"5014": {"drin": "Eigentliche Schweiß-/Verbindungsarbeiten der Kabelschutzrohre (HGÜ/LWL) der Querung – Stränge verschweißen.","wann": "Für die SCHWEISSLEISTUNG selbst (Stumpfschweißen) an der Bohrung."},"5015": {"drin": "Einziehhilfe (Einziehseil/-strumpf) je Querungsbauwerk liefern und einbauen.","wann": "Für die EINZIEHHILFE je Querung (Nr. xx)."},"5016": {"drin": "Rohrstrang/Schutzrohr in die Bohrung einziehen bzw. absenken (DA 250/315/355, auch Bündel).","wann": "Für das EINZIEHEN/ABSENKEN des fertigen Strangs in die Bohrung."},"5017": {"drin": "Erdseil (Erdungsseil) liefern und mit einziehen.","wann": "Für das ERDSEIL der Querung."},"5018": {"drin": "LWL-Kabelschutzrohre (Monitoring) abrufen, einbauen und befestigen.","wann": "Für die BEFESTIGUNG/den Einbau der LWL-Rohre an der Querung."},"5019": {"drin": "Verschlussteller (Endkappen) der Kabelschutzrohre (HGÜ/LWL) montieren/demontieren; KSR ggf. ausbauen.","wann": "Für MONTAGE/DEMONTAGE der Rohr-Verschlussteller."},"50121": {"drin": "E-Hand-Schweißung der Stahlschutzrohre (DA 219 / 323,9 × 5,6 mm) der Querung.","wann": "Für E-HAND-Schweißnähte an Stahlschutzrohren (Sonderfall zum Stumpfschweißen)."},"5021A": {"drin": "Kabelschutzrohre im Offene Graben-Bereich (offene Bauweise) abrufen, einbauen und verschweißen (HGÜ/LWL, Nachrichten-/Monitoring).","wann": "Für ABLADEN/Einbau der Rohre in OFFENER Grabenbauweise."},"5021B": {"drin": "Trassieren/Auslegen der LWL-/Nachrichten-/Monitoring-Rohre im Offene Graben-Bereich.","wann": "Für das TRASSIEREN in offener Bauweise."},"5022": {"drin": "Schweißplatz für die Offene Graben-Rohrverlegung auf-/abbauen.","wann": "Wie 5012, aber OFFENE Bauweise (Offene Graben)."},"5023": {"drin": "Rollenlaufbahn für die Offene Graben-Rohrverlegung auf-/abbauen.","wann": "Wie 5013, aber Offene Graben."},"5024": {"drin": "Schweiß-/Verbindungsarbeiten der Rohre in offener Bauweise.","wann": "Wie 5014, aber Offene Graben."},"5025": {"drin": "Einziehhilfe für die Offene Graben-Verlegung liefern und einbauen.","wann": "Wie 5015, aber Offene Graben."},"5026": {"drin": "Einziehen/Absenken der Rohre/Stränge in offener Bauweise.","wann": "Wie 5016, aber Offene Graben."},"5027": {"drin": "Erdseil im Graben liefern und verlegen (offene Bauweise).","wann": "ERDSEIL, offene Bauweise."},"5028": {"drin": "Molchen/Kalibrieren + Qualitätsprüfung der Kabelschutzrohre (DA 50/32) in offener Bauweise.","wann": "Wie 501A, aber Offene Graben."},"5031": {"drin": "Schweiß-/Verbindungsarbeiten der LWL-/Nachrichten-/Monitoring-Rohre in der Muffengrube (Kabelverbindungsgrube).","wann": "Für Rohr-/SCHWEISSARBEITEN in der MUFFENGRUBE."},"5032": {"drin": "Erdseil in der Muffengrube (mit Link-Box) liefern und verlegen.","wann": "Für das ERDSEIL in der Muffengrube."},"5041": {"drin": "Abladen und Trassieren der LWL-Kabelschutzrohre im kommerziellen Abschnitt (innerhalb/außerhalb Kabelgraben einbauen).","wann": "Für ABLADEN/TRASSIEREN im „Kom.\"-Abschnitt."},"5044": {"drin": "Schweiß-/Verbindungsarbeiten der LWL-Kabelschutzrohre im kommerziellen Abschnitt.","wann": "Für SCHWEISSEN/VERBINDEN im „Kom.\"-Abschnitt."},"601": {"drin": "Kabelgräben mit Oberboden (A-Horizont) rückverfüllen – kulturfähiges Bodenmaterial (Oberboden) liefern/einbauen, je Abschnitt.","wann": "Für die OBERBODEN-Lage der Grabenverfüllung."},"602": {"drin": "Kabelgräben mit Unterboden (B-Horizont) rückverfüllen – kulturfähiges Bodenmaterial (Unterboden) liefern/einbauen.","wann": "Für die UNTERBODEN-Lage der Grabenverfüllung."},"70": {"drin": "Casing-/Stahlschutzrohre liefern, einbringen und zurückbauen; LWL-KSR außerhalb des Kabelgrabens einbauen.","wann": "Für CASING-/SCHUTZROHR-Arbeiten (Schutzverrohrung)."}};
+// Provisorische BAS (ergänzt – Codes ggf. an LV-OZ anpassen): HDD-Bohrung, Wasserhaltung, Vortrieb
+const BAS_INFO_EXT2 = {
+  "H01": { drin: "Horizontalbohrung – Pilotbohrung: steuerbare Pilotbohrung längs der geplanten Trasse (HDD).", wann: "Für die PILOTBOHRUNG der HDD-Querung." },
+  "H02": { drin: "Aufweitbohrung/Räumen (Reaming): Bohrkanal in einem oder mehreren Gängen auf Enddurchmesser aufweiten.", wann: "Für das AUFWEITEN/Räumen des HDD-Bohrkanals." },
+  "H03": { drin: "Bohrspülung/Bentonit aufbereiten, fördern und im Kreislauf führen (Mischanlage, Recycling).", wann: "Für BOHRSPÜLUNG/Bentonit-Aufbereitung bei HDD." },
+  "W01": { drin: "Wasserhaltung einrichten: Pumpensumpf/Brunnen/Nadelfilter herstellen, Pumpen und Leitungen installieren.", wann: "Für das EINRICHTEN der Wasserhaltung." },
+  "W02": { drin: "Wasserhaltung vorhalten und betreiben (Pumpen, Überwachung, Energie) über die Standzeit.", wann: "Für VORHALTEN/Betrieb der Wasserhaltung." },
+  "W03": { drin: "Wasserhaltung zurückbauen: Pumpen, Brunnen und Leitungen ausbauen.", wann: "Für den RÜCKBAU der Wasserhaltung." },
+  "V01": { drin: "Rohrvortrieb/Microtunneling: gesteuerter Vortrieb mit Vortriebsmaschine, Pressen der Rohre.", wann: "Für VORTRIEB/Microtunneling-Querungen." },
+};
 const DEF_BAS = BAS_GROUPS.flatMap(([group, items]) =>
-  items.map(([code, name]) => ({ code, name, group, desc: BAS_INFO_EXT[code]?.drin || BAS_EXTRA[code]?.desc || "", wann: BAS_INFO_EXT[code]?.wann || "" })));
+  items.map(([code, name]) => ({ code, name, group, desc: BAS_INFO_EXT[code]?.drin || BAS_INFO_EXT2[code]?.drin || BAS_EXTRA[code]?.desc || "", wann: BAS_INFO_EXT[code]?.wann || BAS_INFO_EXT2[code]?.wann || "" })));
 const BAS_LV = Object.fromEntries(Object.entries(BAS_EXTRA).filter(([, v]) => v.lv).map(([k, v]) => [k, { lv: v.lv, me: v.me }]));
 
+// Verknüpfung Tätigkeit -> passende BAS (editierbar unter „Listen"). "ALLE" oder leer = keine Einschränkung.
+const DEF_TAET_BAS = {
+  "Ausbläser bekämpfen": ["034","035","35","H01","H03"],
+  "Ausführung E-Power Pipe (TEW)": ["70","5016","5011A","5011B","5012","5014","034","H01"],
+  "Baustelleneinrichtung Allgemein": ["031","032","033","037"],
+  "Baustelleneinrichtung HDD": ["034","035","036"],
+  "Baustelleneinrichtung Schweißstation": ["5012","5013","5022","5023"],
+  "Begehung Zustandsfeststellung": "ALLE",
+  "Entsorgung allgemein": ["35"],
+  "Entsorgung Bentonit": ["35","H03"],
+  "Erstellung HDD": ["034","H01","H02","H03","5011A","5011B","5012","5013","5014","5015","5016","5017","5018","5019","501A","501B","50121"],
+  "Führung von Besuchern/Behörden": "ALLE",
+  "Grundbruch bekämpfen": ["301","302","303","261","W01","W02"],
+  "HSE-Übung": "ALLE",
+  "HSE-Unterweisung": "ALLE",
+  "Kabelzug": ["5016","5026"],
+  "Kabelzug Mithilfe Vorbereitung": ["5015","5025","5013","5023"],
+  "Microtunneling": ["V01","70","034","5016"],
+  "Muffengrube ausbilden": ["5031","5032","251","301","303"],
+  "Oberboden abziehen": ["101","102"],
+  "Oberboden einbringen/glattziehen": ["103","601"],
+  "Pilotbohrung": ["H01","034","35"],
+  "Räumen der Baustelle": ["033","036","W03"],
+  "Rekultivierung": ["103","102","202","203","601","602"],
+  "Rohrpressung": ["V01","70","034"],
+  "Sandbettung einbringen": ["261","262","263","264","265","401"],
+  "Schallschutzmaßnahmen installieren": "ALLE",
+  "Schutzrohr Druckprobe/Kalibrierung": ["501A","501B","5028"],
+  "Schutzrohr einmessen": ["5011A","5011B","5021B","501B"],
+  "Schutzrohr Kabel einziehen": ["5016","5026","5017","5027"],
+  "Schutzrohr LWL einbringen": ["5018","5021A","5021B"],
+  "Schutzrohr schweißen": ["5014","5024","50121","5031"],
+  "Sonstiges": "ALLE",
+  "Straßen reinigen": ["051","052"],
+  "Toolboxtalk": "ALLE",
+  "Transporte": "ALLE",
+  "Unterboden ausheben": ["201","251","202","301"],
+  "Unterboden einbringen": ["203","252","602"],
+  "Verbau": ["301","302","303"],
+  "Vergrämung installieren": "ALLE",
+  "Wartezeiten": "ALLE",
+  "Wartungsarbeiten": "ALLE",
+  "Wasserhaltung installieren": ["W01","W02"],
+  "Wasserhaltung kontrollieren": ["W02"],
+  "Wegebau": ["051","052","401","402"],
+};
 const defaultLists = () => ({
   sektionen: [...DEF_SEKTIONEN], taetigkeiten: [...DEF_TAETIGKEITEN], rollen: [...DEF_ROLLEN],
   bas: DEF_BAS.map((b) => ({ ...b })), geraete: DEF_GERAETE.map((g) => ({ typ: g.typ, units: [...g.units] })),
+  taetBas: { ...DEF_TAET_BAS },
 });
 
 // Sektion-Stammdaten (km, Bauwerke, Segment, Bauabschnitt) – als Info beim Auswählen.
@@ -583,6 +643,35 @@ function StringListEditor({ items, onChange, placeholder }) {
   );
 }
 
+/* Editor: Verknüpfung Tätigkeit -> passende BAS-Codes */
+function TaetBasEditor({ taetigkeiten, bas, map, onChange }) {
+  const [q, setQ] = useState("");
+  const ql = q.trim().toLowerCase();
+  const codeName = useMemo(() => Object.fromEntries(bas.filter((b) => b.code).map((b) => [b.code, b.name])), [bas]);
+  const set = (name, val) => onChange({ ...map, [name]: val });
+  const rows = taetigkeiten.filter(Boolean).filter((t) => !ql || t.toLowerCase().includes(ql));
+  return (
+    <EditorCard icon={ListChecks} title="Tätigkeit ↔ BAS (Verknüpfung)" count={taetigkeiten.length}>
+      <p className="mb-2 text-xs text-slate-500">Welche BAS erscheinen, wenn diese Tätigkeit gewählt wird. Codes mit Komma trennen. Leer = ALLE BAS.</p>
+      <div className="mb-3 flex items-center gap-2 rounded-lg border border-slate-300 px-3"><Search size={15} className="text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tätigkeit suchen…" className="min-h-[44px] w-full bg-transparent text-sm outline-none" /></div>
+      <div className="space-y-3">
+        {rows.map((t) => {
+          const cur = map[t];
+          const isAlle = cur === "ALLE" || !cur || (Array.isArray(cur) && cur.length === 0);
+          const codes = Array.isArray(cur) ? cur : [];
+          return (
+            <div key={t} className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+              <div className="mb-1.5 text-sm font-semibold text-slate-800">{t}</div>
+              <input className={`${inputCls} font-mono`} value={isAlle ? "" : codes.join(", ")} placeholder="ALLE (leer) – z. B. 031, 251, H01" onChange={(e) => { const v = e.target.value.trim(); set(t, v ? v.split(/[\s,;]+/).filter(Boolean) : "ALLE"); }} />
+              <div className="mt-1 text-xs text-slate-500">{isAlle ? "→ ALLE BAS werden angezeigt" : codes.map((c) => `${c} ${codeName[c] || "?"}`).join("  ·  ")}</div>
+            </div>
+          );
+        })}
+      </div>
+    </EditorCard>
+  );
+}
+
 /* ===================== APP ===================== */
 export default function App() {
   const [lists, setLists] = useState(defaultLists());
@@ -647,6 +736,12 @@ export default function App() {
   const rollenOpts = useMemo(() => lists.rollen.filter(Boolean).map((s) => ({ value: s, label: s })), [lists.rollen]);
   const basOpts = useMemo(() => lists.bas.filter((b) => b.code).map((b) => ({ value: b.code, code: b.code, labelShort: b.name, label: `${b.code} – ${b.name}`, group: b.group, sub: (b.desc || "").slice(0, 95) })), [lists.bas]);
   const geraeteTypOpts = useMemo(() => lists.geraete.filter((g) => g.typ).map((g) => ({ value: g.typ, label: g.typ })), [lists.geraete]);
+  // Verknüpfung Tätigkeit <-> BAS: gefilterte Optionen (Fallback: alle, wenn nicht hinterlegt)
+  const taetBasMap = lists.taetBas || {};
+  const basAllowFor = (t) => { const m = t ? taetBasMap[t] : null; return (Array.isArray(m) && m.length) ? m : null; };
+  const taetAllowFor = (code) => { if (!code) return null; const r = Object.keys(taetBasMap).filter((t) => { const m = taetBasMap[t]; return m === "ALLE" || (Array.isArray(m) && m.includes(code)); }); return r.length ? r : null; };
+  const basOptsF = useMemo(() => { const a = basAllowFor(draft.taetigkeit); if (!a) return basOpts; const f = basOpts.filter((o) => a.includes(o.code) || o.code === draft.bas); return f.length ? f : basOpts; }, [basOpts, draft.taetigkeit, draft.bas, lists.taetBas]);
+  const taetOptsF = useMemo(() => { const a = taetAllowFor(draft.bas); if (!a) return taetOpts; const f = taetOpts.filter((o) => a.includes(o.value) || o.value === draft.taetigkeit); return f.length ? f : taetOpts; }, [taetOpts, draft.bas, draft.taetigkeit, lists.taetBas]);
   const unitsOf = (typ) => lists.geraete.find((g) => g.typ === typ)?.units.filter(Boolean) || [];
   const basName = (code) => lists.bas.find((b) => b.code === code)?.name || code || "";
   const basMeta = (code) => { const b = lists.bas.find((x) => x.code === code); const lvm = BAS_LV[code]; return { name: b?.name || code, lv: lvm?.lv, me: lvm?.me, desc: b?.desc || "", wann: b?.wann || "" }; };
@@ -708,6 +803,10 @@ export default function App() {
     return { ph, gh, mengen: [...map.values()].sort((a, b) => a.bas.localeCompare(b.bas)) };
   }, [positions]);
 
+  // Pflichtfelder im Kopf (erste Seite)
+  const REQ_DAY = [["bauleiter", "Bauleiter"], ["tempMin", "Temp. min"], ["tempMax", "Temp. max"], ["arbeitStart", "Arbeitszeit Start"], ["arbeitEnde", "Arbeitszeit Ende"], ["gewerk", "Gewerk"]];
+  const dayMissing = REQ_DAY.filter(([k]) => !String((day && day[k]) ?? "").trim()).map(([, l]) => l);
+
   /* ============ SETTINGS / LISTEN VERWALTEN ============ */
   if (view === "settings") {
     const needLogin = SB_ON && !session;
@@ -741,6 +840,7 @@ export default function App() {
               </EditorCard>
               <BasEditor bas={lists.bas} onChange={(v) => setListKey("bas", v)} />
               <GeraeteEditor geraete={lists.geraete} onChange={(v) => setListKey("geraete", v)} />
+              <TaetBasEditor taetigkeiten={lists.taetigkeiten} bas={lists.bas} map={lists.taetBas || {}} onChange={(v) => setListKey("taetBas", v)} />
               {SB_ON && session && <button onClick={resetLists} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"><RotateCcw size={15} /> Auf Standard zurücksetzen</button>}
             </>
           )}
@@ -807,13 +907,13 @@ export default function App() {
                 <p className="mb-2 text-xs font-semibold text-slate-700">Vorhaben-Auswahl <span className="font-normal text-slate-500">· rechte Seite = OST = V4 · linke Seite = WEST = V3</span></p>
                 <img src={VORHABEN_IMG} alt="Vorhaben Querschnitt – Graben, Schutzstreifen, HGÜ 525 kV" className="w-full rounded border border-slate-200 bg-white" />
               </div>
-              <Field label="Tätigkeit"><Combo value={draft.taetigkeit} onChange={(v) => setD("taetigkeit", v)} options={taetOpts} /></Field>
+              <Field label="Tätigkeit"><Combo value={draft.taetigkeit} onChange={(v) => setD("taetigkeit", v)} options={taetOptsF} /></Field>
               <div>
                 <div className="mb-1 flex items-center justify-between">
                   <Label hint="(Leistungs-/Kostenschlüssel)">BAS</Label>
                   {draft.bas && <button onClick={() => setBasModal(draft.bas)} className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:underline"><Info size={13} /> Was ist enthalten?</button>}
                 </div>
-                <Combo value={draft.bas} onChange={(v) => setD("bas", v)} options={basOpts} />
+                <Combo value={draft.bas} onChange={(v) => setD("bas", v)} options={basOptsF} />
               </div>
               {draft.bas && (() => { const m = basMeta(draft.bas); return (m.lv || m.desc || m.wann) ? (
                 <div className="rounded-lg border border-sky-200 bg-sky-50/70 p-3">
@@ -1062,18 +1162,18 @@ export default function App() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Projekt"><input className={inputCls} value={day.projekt} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, projekt: v })); }} placeholder="Bauvorhaben" /></Field>
             <Field label="Datum"><input type="date" className={inputCls} value={day.datum} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, datum: v })); }} /></Field>
-            <Field label="Bauleiter / Ersteller"><input className={inputCls} value={day.bauleiter} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, bauleiter: v })); }} placeholder="Name" /></Field>
+            <Field label="Bauleiter / Ersteller"><input className={`${inputCls} ${!day.bauleiter ? "border-red-400" : ""}`} value={day.bauleiter} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, bauleiter: v })); }} placeholder="Name" /></Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Temp. min °C"><input type="number" className={inputCls} value={day.tempMin} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, tempMin: v })); }} /></Field>
-              <Field label="Temp. max °C"><input type="number" className={inputCls} value={day.tempMax} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, tempMax: v })); }} /></Field>
+              <Field label="Temp. min °C"><input type="number" className={`${inputCls} ${!day.tempMin ? "border-red-400" : ""}`} value={day.tempMin} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, tempMin: v })); }} /></Field>
+              <Field label="Temp. max °C"><input type="number" className={`${inputCls} ${!day.tempMax ? "border-red-400" : ""}`} value={day.tempMax} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, tempMax: v })); }} /></Field>
             </div>
           </div>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Arbeitszeit Start"><input type="time" className={inputCls} value={day.arbeitStart} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, arbeitStart: v })); }} /></Field>
-              <Field label="Arbeitszeit Ende"><input type="time" className={inputCls} value={day.arbeitEnde} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, arbeitEnde: v })); }} /></Field>
+              <Field label="Arbeitszeit Start"><input type="time" className={`${inputCls} ${!day.arbeitStart ? "border-red-400" : ""}`} value={day.arbeitStart} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, arbeitStart: v })); }} /></Field>
+              <Field label="Arbeitszeit Ende"><input type="time" className={`${inputCls} ${!day.arbeitEnde ? "border-red-400" : ""}`} value={day.arbeitEnde} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, arbeitEnde: v })); }} /></Field>
             </div>
-            <Field label="Gewerk" hint="(frei)"><input className={inputCls} value={day.gewerk} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, gewerk: v })); }} placeholder="z. B. Tiefbau / HDD / Schweißkolonne" /></Field>
+            <Field label="Gewerk" hint="(Pflicht)"><input className={`${inputCls} ${!day.gewerk ? "border-red-400" : ""}`} value={day.gewerk} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, gewerk: v })); }} placeholder="z. B. Tiefbau / HDD / Schweißkolonne" /></Field>
           </div>
           <div className="mt-4">
             <Label>Wetter</Label>
@@ -1174,9 +1274,12 @@ export default function App() {
         </section>
 
         {hasContent && (
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => { setPreviewData({ day, positions, back: "home" }); setView("preview"); }} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FileText size={16} /> Vorschau · PDF · Excel · XML</button>
-            <button onClick={closeDay} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"><CheckCircle2 size={16} /> Tag abschließen</button>
+          <div>
+            {dayMissing.length > 0 && <p className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">Bitte Kopfdaten ausfüllen (Pflicht): {dayMissing.join(", ")}.</p>}
+            <div className="flex flex-wrap gap-2">
+              <button disabled={dayMissing.length > 0} onClick={() => { if (dayMissing.length) return; setPreviewData({ day, positions, back: "home" }); setView("preview"); }} title={dayMissing.length ? "Kopfdaten unvollständig" : ""} className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold ${dayMissing.length ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}><FileText size={16} /> Vorschau · PDF · Excel · XML</button>
+              <button onClick={closeDay} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"><CheckCircle2 size={16} /> Tag abschließen</button>
+            </div>
           </div>
         )}
       </main>
