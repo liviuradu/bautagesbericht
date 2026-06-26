@@ -794,7 +794,7 @@ export default function App() {
                   <div className="flex items-start gap-2">
                     <Info size={15} className="mt-0.5 shrink-0 text-sky-700" />
                     <div className="min-w-0 flex-1">
-                      {m.lv && <p className="text-sm"><span className="font-semibold text-slate-800">LV-Leistung: </span><span className="text-slate-700">{m.lv}</span>{m.me && <span className="ml-1.5 rounded bg-sky-100 px-1.5 py-0.5 font-mono text-xs text-sky-800">{m.me}</span>}</p>}
+                      {/* LV-Leistung-Zeile entfernt – auf Wunsch nicht mehr anzeigen */}
                       {m.desc && <p className="text-sm text-slate-700"><span className="font-semibold text-slate-800">Was steckt drin: </span>{m.desc}</p>}
                       {m.wann && <p className="mt-1 text-sm text-slate-600"><span className="font-semibold text-slate-800">Wann wählen: </span>{m.wann}</p>}
                       <button onClick={applyBasInfo} className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:underline"><Wand2 size={12} /> Beschreibung & Einheit übernehmen</button>
