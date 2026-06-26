@@ -1162,18 +1162,18 @@ export default function App() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Projekt"><input className={inputCls} value={day.projekt} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, projekt: v })); }} placeholder="Bauvorhaben" /></Field>
             <Field label="Datum"><input type="date" className={inputCls} value={day.datum} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, datum: v })); }} /></Field>
-            <Field label="Bauleiter / Ersteller"><input className={`${inputCls} ${!day.bauleiter ? "border-red-400" : ""}`} value={day.bauleiter} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, bauleiter: v })); }} placeholder="Name" /></Field>
+            <Field label="Bauleiter / Ersteller"><input className={`${inputCls} ${!day.bauleiter ? "ring-2 ring-red-400" : ""}`} value={day.bauleiter} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, bauleiter: v })); }} placeholder="Name" /></Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Temp. min °C"><input type="number" className={`${inputCls} ${!day.tempMin ? "border-red-400" : ""}`} value={day.tempMin} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, tempMin: v })); }} /></Field>
-              <Field label="Temp. max °C"><input type="number" className={`${inputCls} ${!day.tempMax ? "border-red-400" : ""}`} value={day.tempMax} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, tempMax: v })); }} /></Field>
+              <Field label="Temp. min °C"><input type="number" className={`${inputCls} ${!day.tempMin ? "ring-2 ring-red-400" : ""}`} value={day.tempMin} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, tempMin: v })); }} /></Field>
+              <Field label="Temp. max °C"><input type="number" className={`${inputCls} ${!day.tempMax ? "ring-2 ring-red-400" : ""}`} value={day.tempMax} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, tempMax: v })); }} /></Field>
             </div>
           </div>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Arbeitszeit Start"><input type="time" className={`${inputCls} ${!day.arbeitStart ? "border-red-400" : ""}`} value={day.arbeitStart} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, arbeitStart: v })); }} /></Field>
-              <Field label="Arbeitszeit Ende"><input type="time" className={`${inputCls} ${!day.arbeitEnde ? "border-red-400" : ""}`} value={day.arbeitEnde} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, arbeitEnde: v })); }} /></Field>
+              <Field label="Arbeitszeit Start"><input type="time" className={`${inputCls} ${!day.arbeitStart ? "ring-2 ring-red-400" : ""}`} value={day.arbeitStart} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, arbeitStart: v })); }} /></Field>
+              <Field label="Arbeitszeit Ende"><input type="time" className={`${inputCls} ${!day.arbeitEnde ? "ring-2 ring-red-400" : ""}`} value={day.arbeitEnde} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, arbeitEnde: v })); }} /></Field>
             </div>
-            <Field label="Gewerk" hint="(Pflicht)"><input className={`${inputCls} ${!day.gewerk ? "border-red-400" : ""}`} value={day.gewerk} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, gewerk: v })); }} placeholder="z. B. Tiefbau / HDD / Schweißkolonne" /></Field>
+            <Field label="Gewerk" hint="(Pflicht)"><input className={`${inputCls} ${!day.gewerk ? "ring-2 ring-red-400" : ""}`} value={day.gewerk} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, gewerk: v })); }} placeholder="z. B. Tiefbau / HDD / Schweißkolonne" /></Field>
           </div>
           <div className="mt-4">
             <Label>Wetter</Label>
