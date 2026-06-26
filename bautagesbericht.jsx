@@ -165,8 +165,10 @@ const BAS_EXTRA = {
   "602": { lv: "Kulturfähiges Bodenmaterial (Unterboden) liefern und einbauen", me: "m³", desc: "Unterboden-Rückverfüllung der Kabelgräben." },
   "70": { desc: "Casingrohre liefern, einbringen und rückbauen." },
 };
+// Ergänzung aus "BAS-Verteilung": Klartext ("Was steckt drin") + "Wann wählen" je BAS (per Python injiziert).
+const BAS_INFO_EXT = {"031": {"drin": "Zentrale (Haupt-)Baustelleneinrichtung herstellen: Haupt-/Lagerplätze und die AG-Container (Baubüro, Besuchercontainer) auf- und abbauen, Oberboden auf den BE-Flächen abtragen und lagern, Schottertragschicht und Tiefenlockerung, Baustelle einrichten.","wann": "Einmalig für das EINRICHTEN der zentralen Baustelle (nicht je Abschnitt). Für Auf-/Abbau der Haupt-BE und der AG-Container."},"032": {"drin": "Vorhalten (Miete/Betrieb/Unterhalt) der zentralen Baustelleneinrichtung und der AG-Container über die Bauzeit.","wann": "Für die laufende (monatliche) VORHALTUNG der Haupt-BE – nicht für Auf-/Abbau."},"033": {"drin": "Zentrale Baustelle am Bauende räumen, Flächen zurückbauen und wiederherstellen.","wann": "Nur für die End-RÄUMUNG der zentralen Baustelle."},"034": {"drin": "Baustelleneinrichtung für die Querungen/HDD-Bohrplätze auf- und abbauen (je Querungsbauwerk, geschlossene Bauweise/Bohrung).","wann": "Für das EINRICHTEN eines HDD-/Querungs-Bohrplatzes, pro Querung."},"035": {"drin": "Entsorgung von Aushub-/Kabelgraben-Material (horizontunabhängig) nach EBV-Zuordnung (z. B. BM-0/BG-0): belastetes/überschüssiges Material abfahren und entsorgen.","wann": "Für die ENTSORGUNG von nicht wiederverwendbarem Aushub (Deponie/EBV-Klasse). ACHTUNG: Code 35 doppelt – hier ENTSORGUNG, nicht BE Querung."},"036": {"drin": "Querungs-/HDD-Bohrplatz am Ende räumen (je Querung).","wann": "Für die RÄUMUNG eines HDD-/Querungsplatzes."},"037": {"drin": "Komplette Baustelleneinrichtung für die archäologische Begleitung/Grabungen: Bauzaun, Schutzzaun, Beleuchtung, Witterungsschutz-Einhausung (Zelt) mit Heizung, mobile Wärme-/Stromerzeuger, Grabungsschutz (Sandabdeckung) – auf-/abbauen, umsetzen, vorhalten, räumen.","wann": "Für ALLE BE-Leistungen rund um archäologische Untersuchungsflächen (Zelt/Heizung/Zaun/Strom)."},"051": {"drin": "Äußere (Haupt-)Baustraßen bauen: Ober-/Unterboden abtragen, Planum, Geotextil/Kombigitter, Schottertragschicht 40–70 cm, Lastverteilungsplatten, Dammschüttung, Bankett, Asphalttragdeckschicht; später trennen/rückbauen.","wann": "Für die GROSSEN Zufahrts-/Hauptbaustraßen außerhalb der Trasse."},"052": {"drin": "Innere Baustraßen (auf/entlang der Trasse): Planum, Geotextil, Schottertragschicht 30–40 cm, Lastverteilungsplatten.","wann": "Für die LEICHTEREN inneren Fahrwege im Trassenbereich."},"101": {"drin": "Oberboden (A-Horizont/Mutterboden) auf den Trassenabschnitten abtragen und getrennt lagern (auch im Leitungsbereich).","wann": "Für den getrennten MUTTERBODEN-ABTRAG vor dem Aushub, je Abschnitt."},"102": {"drin": "Oberboden-Mieten für längere Zwischenlagerung mit Zwischenbegrünung (Abtrag/Lagerung).","wann": "Wenn der gelagerte Oberboden zwischenbegrünt / länger gemietet wird."},"103": {"drin": "Oberboden des AG wieder andecken/auftragen (Flächen, Einzel- und Kleinflächen) – Rekultivierung.","wann": "Für das WIEDERAUFTRAGEN des Mutterbodens nach der Verfüllung."},"201": {"drin": "Unterboden (B-Horizont) ausheben und getrennt lagern; Planum zur archäologischen Bewertung; Bodenabtrag B+C.","wann": "Für den getrennten B-HORIZONT-AUSHUB."},"202": {"drin": "Unterboden-Miete (B-Horizont) mit Zwischenbegrünung / Planum.","wann": "Bei Zwischenlagerung/Begrünung des Unterbodens."},"203": {"drin": "Unterboden (B-Horizont) des AG wieder andecken – Rekultivierung.","wann": "Für das WIEDERAUFTRAGEN des B-Horizonts."},"251": {"drin": "Eigentlicher Grabenaushub: Aushub C-Horizont (Grabensohle, auch oberhalb der Bettungszone) ausheben und lagern; Zulage Fels.","wann": "Für den GRABENAUSHUB der Kabeltrasse (C-Horizont/Fels)."},"252": {"drin": "Rückverfüllung des Grabens im C-Horizont-Bereich (mit Aushub-/geeignetem Material).","wann": "Für die RÜCKVERFÜLLUNG der Grabensohle (über der Bettung)."},"261": {"drin": "Bettung aus Sand/Kies/Splitt liefern und in die Leitungszone einbauen.","wann": "Wenn die Bettung aus SAND/KIES/SPLITT besteht."},"262": {"drin": "Bettung aus Flüssigboden (verflüssigtes/aufbereitetes Material).","wann": "Bei FLÜSSIGBODEN-Bettung."},"263": {"drin": "Boden für die Bettungsaufbereitung fördern (Teilleistung).","wann": "Teilleistung BODEN FÖRDERN für die Bettung."},"264": {"drin": "Aushubboden für die Wiederverwendung als Bettung aufbereiten (Teilleistung).","wann": "Teilleistung BODEN AUFBEREITEN für die Bettung."},"265": {"drin": "Aufbereitetes/geliefertes Bettungsmaterial in die Leitungszone einbauen (Haupt-Bettungsposition über die Abschnitte).","wann": "Für den EINBAU der Bettung rund um die Rohre (Standardfall)."},"301": {"drin": "Grabenverbau (Verbaukästen/Spundbohlen) je nach Grabentiefe/-breite herstellen und einbauen (H 1,75–4 m).","wann": "Für das EINBAUEN des Grabenverbaus."},"302": {"drin": "Vorhalten des Grabenverbaus über die Standzeit.","wann": "Für die laufende VORHALTUNG des Verbaus."},"303": {"drin": "Grabenverbau ziehen/ausbauen/rückbauen.","wann": "Für den AUSBAU des Verbaus."},"35": {"drin": "Entsorgung von Aushub-/Kabelgraben-Material (horizontunabhängig) nach EBV-Zuordnung (z. B. BM-0/BG-0): belastetes/überschüssiges Material abfahren und entsorgen.","wann": "Für die ENTSORGUNG von nicht wiederverwendbarem Aushub (Deponie/EBV-Klasse). ACHTUNG: Code 35 doppelt – hier ENTSORGUNG, nicht BE Querung."},"401": {"drin": "Geotextil/Kombigitter (Zugfestigkeit 120 kN/m) liefern und verlegen (Trennschicht/Grabenschutz).","wann": "Für den EINBAU von Geotextil/Kombigitter."},"402": {"drin": "Geotextil/Kombigitter wieder aufnehmen/zurückbauen.","wann": "Für den RÜCKBAU des Geotextils."},"501A": {"drin": "Rohrleitung der Querung molchen und kalibrieren + Qualitätsprüfung der Kabelschutzrohre (HGÜ, LWL, diverse DA): Reinigungs-/Kalibriermolch durchziehen, Maßhaltigkeit prüfen.","wann": "Für MOLCHEN/KALIBRIEREN + Qualitätsprüfung der fertigen Querungsrohre (Bohrung)."},"501B": {"drin": "Qualitätsprüfung der Kabelschutzrohre der Querung (HGÜ+LWL, DA 315/280): Dichtheits-/Maßprüfung.","wann": "Speziell für die QUALITÄTSPRÜFUNG (ohne Molchen) der Querungsrohre."},"5011A": {"drin": "Trassieren/Auslegen und Vorbereiten der Rohrstränge der Querung; Kabelschutzrohre (HGÜ/LWL) abrufen und verschweißen.","wann": "Für das TRASSIEREN/Auslegen des Rohrstrangs vor dem Einzug (Bohrung)."},"5011B": {"drin": "Kabelschutzrohre an der Querung anliefern/abladen und bereitstellen (HGÜ/LWL, Nachrichten-/Monitoringkabel-Rohre) abrufen.","wann": "Für das ABLADEN/Bereitstellen der Rohre an der Bohrung."},"5012": {"drin": "Schweißplatz für den Rohrstrang der Querung auf- und abbauen (Stumpfschweißen KSR, Stahlschutzrohr DA 219/323).","wann": "Für AUF-/ABBAU des SCHWEISSPLATZES an der Bohrung."},"5013": {"drin": "Rollenlaufbahn/Ablaufbahn (Arbeitsbereich zum Auslegen des Strangs) herrichten, auf- und abbauen.","wann": "Für AUF-/ABBAU der ROLLEN-/ABLAUFBAHN an der Bohrung."},"5014": {"drin": "Eigentliche Schweiß-/Verbindungsarbeiten der Kabelschutzrohre (HGÜ/LWL) der Querung – Stränge verschweißen.","wann": "Für die SCHWEISSLEISTUNG selbst (Stumpfschweißen) an der Bohrung."},"5015": {"drin": "Einziehhilfe (Einziehseil/-strumpf) je Querungsbauwerk liefern und einbauen.","wann": "Für die EINZIEHHILFE je Querung (Nr. xx)."},"5016": {"drin": "Rohrstrang/Schutzrohr in die Bohrung einziehen bzw. absenken (DA 250/315/355, auch Bündel).","wann": "Für das EINZIEHEN/ABSENKEN des fertigen Strangs in die Bohrung."},"5017": {"drin": "Erdseil (Erdungsseil) liefern und mit einziehen.","wann": "Für das ERDSEIL der Querung."},"5018": {"drin": "LWL-Kabelschutzrohre (Monitoring) abrufen, einbauen und befestigen.","wann": "Für die BEFESTIGUNG/den Einbau der LWL-Rohre an der Querung."},"5019": {"drin": "Verschlussteller (Endkappen) der Kabelschutzrohre (HGÜ/LWL) montieren/demontieren; KSR ggf. ausbauen.","wann": "Für MONTAGE/DEMONTAGE der Rohr-Verschlussteller."},"50121": {"drin": "E-Hand-Schweißung der Stahlschutzrohre (DA 219 / 323,9 × 5,6 mm) der Querung.","wann": "Für E-HAND-Schweißnähte an Stahlschutzrohren (Sonderfall zum Stumpfschweißen)."},"5021A": {"drin": "Kabelschutzrohre im Offene Graben-Bereich (offene Bauweise) abrufen, einbauen und verschweißen (HGÜ/LWL, Nachrichten-/Monitoring).","wann": "Für ABLADEN/Einbau der Rohre in OFFENER Grabenbauweise."},"5021B": {"drin": "Trassieren/Auslegen der LWL-/Nachrichten-/Monitoring-Rohre im Offene Graben-Bereich.","wann": "Für das TRASSIEREN in offener Bauweise."},"5022": {"drin": "Schweißplatz für die Offene Graben-Rohrverlegung auf-/abbauen.","wann": "Wie 5012, aber OFFENE Bauweise (Offene Graben)."},"5023": {"drin": "Rollenlaufbahn für die Offene Graben-Rohrverlegung auf-/abbauen.","wann": "Wie 5013, aber Offene Graben."},"5024": {"drin": "Schweiß-/Verbindungsarbeiten der Rohre in offener Bauweise.","wann": "Wie 5014, aber Offene Graben."},"5025": {"drin": "Einziehhilfe für die Offene Graben-Verlegung liefern und einbauen.","wann": "Wie 5015, aber Offene Graben."},"5026": {"drin": "Einziehen/Absenken der Rohre/Stränge in offener Bauweise.","wann": "Wie 5016, aber Offene Graben."},"5027": {"drin": "Erdseil im Graben liefern und verlegen (offene Bauweise).","wann": "ERDSEIL, offene Bauweise."},"5028": {"drin": "Molchen/Kalibrieren + Qualitätsprüfung der Kabelschutzrohre (DA 50/32) in offener Bauweise.","wann": "Wie 501A, aber Offene Graben."},"5031": {"drin": "Schweiß-/Verbindungsarbeiten der LWL-/Nachrichten-/Monitoring-Rohre in der Muffengrube (Kabelverbindungsgrube).","wann": "Für Rohr-/SCHWEISSARBEITEN in der MUFFENGRUBE."},"5032": {"drin": "Erdseil in der Muffengrube (mit Link-Box) liefern und verlegen.","wann": "Für das ERDSEIL in der Muffengrube."},"5041": {"drin": "Abladen und Trassieren der LWL-Kabelschutzrohre im kommerziellen Abschnitt (innerhalb/außerhalb Kabelgraben einbauen).","wann": "Für ABLADEN/TRASSIEREN im „Kom.\"-Abschnitt."},"5044": {"drin": "Schweiß-/Verbindungsarbeiten der LWL-Kabelschutzrohre im kommerziellen Abschnitt.","wann": "Für SCHWEISSEN/VERBINDEN im „Kom.\"-Abschnitt."},"601": {"drin": "Kabelgräben mit Oberboden (A-Horizont) rückverfüllen – kulturfähiges Bodenmaterial (Oberboden) liefern/einbauen, je Abschnitt.","wann": "Für die OBERBODEN-Lage der Grabenverfüllung."},"602": {"drin": "Kabelgräben mit Unterboden (B-Horizont) rückverfüllen – kulturfähiges Bodenmaterial (Unterboden) liefern/einbauen.","wann": "Für die UNTERBODEN-Lage der Grabenverfüllung."},"70": {"drin": "Casing-/Stahlschutzrohre liefern, einbringen und zurückbauen; LWL-KSR außerhalb des Kabelgrabens einbauen.","wann": "Für CASING-/SCHUTZROHR-Arbeiten (Schutzverrohrung)."}};
 const DEF_BAS = BAS_GROUPS.flatMap(([group, items]) =>
-  items.map(([code, name]) => ({ code, name, group, desc: BAS_EXTRA[code]?.desc || "" })));
+  items.map(([code, name]) => ({ code, name, group, desc: BAS_INFO_EXT[code]?.drin || BAS_EXTRA[code]?.desc || "", wann: BAS_INFO_EXT[code]?.wann || "" })));
 const BAS_LV = Object.fromEntries(Object.entries(BAS_EXTRA).filter(([, v]) => v.lv).map(([k, v]) => [k, { lv: v.lv, me: v.me }]));
 
 const defaultLists = () => ({
@@ -307,19 +309,112 @@ const exportExcel = (day, positions, kurz) => {
     downloadBlob(new Blob([out], { type: "application/octet-stream" }), fileBase(day) + ".xlsx");
   }
 };
+async function buildPdfBlob(day, positions, kurz) {
+  const { jsPDF } = await import("jspdf");
+  const autoTable = (await import("jspdf-autotable")).default;
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const M = 40;
+  let y = 46;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.text("BAUTAGESBERICHT", M, y);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.text(String(day.projekt || ""), M, y + 15);
+  doc.setFont("helvetica", "bold"); doc.text(dateDE(day.datum), W - M, y, { align: "right" });
+  doc.setFont("helvetica", "normal");
+  const Wt = WETTER.find((w) => w.key === day.wetter);
+  const hdr = [
+    `${Wt ? Wt.label : day.wetter} · ${day.tempMin || "–"}/${day.tempMax || "–"} °C`,
+    (day.arbeitStart || day.arbeitEnde) ? `Arbeitszeit: ${day.arbeitStart || "–"}–${day.arbeitEnde || "–"}` : null,
+    day.gewerk ? `Gewerk: ${day.gewerk}` : null,
+    day.bauleiter ? `Bauleiter: ${day.bauleiter}` : null,
+  ].filter(Boolean);
+  hdr.forEach((t, i) => doc.text(t, W - M, y + 15 + i * 13, { align: "right" }));
+  y = y + 15 + Math.max(hdr.length * 13, 13) + 8;
+  doc.setDrawColor(15, 23, 42); doc.setLineWidth(1.2); doc.line(M, y, W - M, y); y += 14;
+
+  autoTable(doc, {
+    startY: y,
+    head: [["Nr", "BAS", "Sektion · Vorhaben", "Tätigkeit", "Beschreibung", "Menge", "P-Std", "G-Std"]],
+    body: positions.map((p, i) => [
+      i + 1, p.bas, `${p.sektion}${p.vorhaben ? " · " + p.vorhaben : ""}${p.vorhabenUeb === "Ja" ? " · übergr." : ""}`,
+      p.taetigkeit, p.beschreibung || "", num(p.menge) ? `${fmt(num(p.menge))} ${p.einheit}` : "", fmt(phOf(p)), fmt(ghOf(p)),
+    ]),
+    styles: { fontSize: 8, cellPadding: 3, valign: "top", overflow: "linebreak" },
+    headStyles: { fillColor: [15, 23, 42], textColor: 255, fontSize: 8 },
+    columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 42 }, 5: { halign: "right", cellWidth: 50 }, 6: { halign: "right", cellWidth: 32 }, 7: { halign: "right", cellWidth: 32 } },
+    margin: { left: M, right: M },
+  });
+  y = doc.lastAutoTable.finalY + 10;
+
+  positions.forEach((p, i) => {
+    const persRows = p.personal.filter((x) => x.rolle).map((x) => [x.rolle, String(x.anzahl || ""), String(x.stunden || "")]);
+    const gerRows = p.geraete.filter((x) => x.typ).map((x) => [geraetLabel(x), String(x.anzahl || ""), String(x.stunden || "")]);
+    if (!persRows.length && !gerRows.length) return;
+    if (y > H - 90) { doc.addPage(); y = 46; }
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(`Pos. ${i + 1} · ${p.bas} ${kurz(p.bas)}`, M, y); y += 4;
+    autoTable(doc, {
+      startY: y, theme: "grid",
+      head: [["Personal", "Anz.", "Std.", "Gerät", "Anz.", "Std."]],
+      body: Array.from({ length: Math.max(persRows.length, gerRows.length) }).map((_, r) => [
+        persRows[r]?.[0] || "", persRows[r]?.[1] || "", persRows[r]?.[2] || "", gerRows[r]?.[0] || "", gerRows[r]?.[1] || "", gerRows[r]?.[2] || "",
+      ]),
+      styles: { fontSize: 8, cellPadding: 2 }, headStyles: { fillColor: [241, 245, 249], textColor: [51, 65, 85], fontSize: 8 }, margin: { left: M, right: M },
+    });
+    y = doc.lastAutoTable.finalY + 10;
+  });
+
+  const still = (day.stillstand || []).filter((s) => s.start || s.ende || s.grund || s.sektion);
+  if (still.length) {
+    if (y > H - 90) { doc.addPage(); y = 46; }
+    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text("Stillstandszeiten", M, y); y += 4;
+    autoTable(doc, {
+      startY: y, head: [["Nr", "Sektion", "Vorhaben", "Start", "Ende", "Begründung"]],
+      body: still.map((s, i) => [i + 1, s.sektion, s.vorhaben, s.start, s.ende, s.grund]),
+      styles: { fontSize: 8, cellPadding: 3, overflow: "linebreak" }, headStyles: { fillColor: [15, 23, 42], textColor: 255 }, margin: { left: M, right: M },
+    });
+    y = doc.lastAutoTable.finalY + 10;
+  }
+  const vork = (day.vorkommnisse || []).filter((v) => (v.text || "").trim());
+  if (vork.length) {
+    if (y > H - 70) { doc.addPage(); y = 46; }
+    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text("Besondere Vorkommnisse / Besucher", M, y); y += 14;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+    vork.forEach((v, i) => {
+      const lines = doc.splitTextToSize(`${i + 1}. ${v.text}`, W - 2 * M);
+      if (y + lines.length * 12 > H - 30) { doc.addPage(); y = 46; }
+      doc.text(lines, M, y); y += lines.length * 12 + 3;
+    });
+  }
+  return doc.output("blob");
+}
+
+async function saveWithPicker(file) {
+  const ext = file.name.split(".").pop();
+  const handle = await window.showSaveFilePicker({ suggestedName: file.name, types: [{ description: ext.toUpperCase(), accept: { [file.type]: ["." + ext] } }] });
+  const ws = await handle.createWritable(); await ws.write(file); await ws.close();
+}
+
 async function shareReport(day, positions, kurz) {
   const base = fileBase(day);
-  const xmlFile = new File([buildXML(day, positions, kurz)], base + ".xml", { type: "application/xml" });
   const xlsxOut = XLSX.write(buildWorkbook(day, positions, kurz), { bookType: "xlsx", type: "array" });
-  const xlsxFile = new File([xlsxOut], base + ".xlsx", { type: "application/octet-stream" });
-  if (navigator.canShare && navigator.canShare({ files: [xmlFile, xlsxFile] })) {
-    try { await navigator.share({ files: [xmlFile, xlsxFile], title: "Bautagesbericht", text: `Bautagesbericht ${day.projekt} ${day.datum}` }); return; }
-    catch (e) { /* abgebrochen -> Fallback */ }
+  const xlsxFile = new File([xlsxOut], base + ".xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  let pdfFile = null;
+  try { const pdf = await buildPdfBlob(day, positions, kurz); pdfFile = new File([pdf], base + ".pdf", { type: "application/pdf" }); } catch (e) { /* PDF nicht möglich -> nur Excel */ }
+  const files = pdfFile ? [pdfFile, xlsxFile] : [xlsxFile];
+
+  // 1) Handy: natives Teilen-Menü – Mail-App wählen, beide Dateien angehängt
+  if (navigator.canShare && navigator.canShare({ files })) {
+    try { await navigator.share({ files, title: "Bautagesbericht", text: `Bautagesbericht ${day.projekt} ${day.datum}` }); return; }
+    catch (e) { if (e && e.name === "AbortError") return; }
   }
-  exportXML(day, positions, kurz); exportExcel(day, positions, kurz);
-  const subject = encodeURIComponent(`Bautagesbericht ${day.projekt} ${day.datum}`);
-  const body = encodeURIComponent(`Anbei der Bautagesbericht vom ${day.datum} (${positions.length} Positionen).\n\nDateien (XML + Excel) wurden heruntergeladen – bitte an diese Mail anhängen.`);
-  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  // 2) PC (Chrome/Edge): Speicherort wählen (Computer oder SharePoint)
+  if (window.showSaveFilePicker) {
+    try { for (const f of files) await saveWithPicker(f); return; }
+    catch (e) { if (e && e.name === "AbortError") return; /* sonst Download */ }
+  }
+  // 3) Fallback: beide Dateien herunterladen
+  if (pdfFile) downloadBlob(pdfFile, pdfFile.name);
+  downloadBlob(xlsxFile, xlsxFile.name);
 }
 
 const emptyDay = () => ({ datum: today(), projekt: "SuedLink Los 3", bauleiter: "", gewerk: "", arbeitStart: "", arbeitEnde: "", wetter: "heiter", tempMin: "", tempMax: "", stillstand: [], vorkommnisse: [] });
@@ -366,9 +461,12 @@ function Combo({ value, onChange, options, placeholder = "– wählen –" }) {
                   <Fragment key={o.value + i}>
                     {showGroup && <div className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">{o.group}</div>}
                     <button type="button" onClick={() => { onChange(o.value); setOpen(false); setQ(""); }}
-                      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-amber-50 ${o.value === value ? "bg-amber-50 font-semibold text-amber-800" : "text-slate-700"}`}>
-                      {o.code !== undefined && <span className="w-12 shrink-0 font-mono text-xs text-slate-500">{o.code}</span>}
-                      <span className="truncate">{o.labelShort ?? o.label}</span>
+                      className={`flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-amber-50 ${o.value === value ? "bg-amber-50 font-semibold text-amber-800" : "text-slate-700"}`}>
+                      {o.code !== undefined && <span className="w-12 shrink-0 pt-0.5 font-mono text-xs text-slate-500">{o.code}</span>}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{o.labelShort ?? o.label}</span>
+                        {o.sub && <span className="mt-0.5 block text-xs font-normal leading-snug text-slate-400 line-clamp-2">{o.sub}…</span>}
+                      </span>
                     </button>
                   </Fragment>
                 );
@@ -453,7 +551,7 @@ export default function App() {
           if (r?.value) { const d = JSON.parse(r.value); setDay(d.day || emptyDay()); setPositions(d.positions || []); setArchive(d.archive || []); }
           const s = await window.storage.get("btb_session");
           if (s?.value) setSession(JSON.parse(s.value));
-          const l = await window.storage.get("btb_lists_v1");
+          const l = await window.storage.get("btb_lists_v2");
           if (l?.value) setLists({ ...defaultLists(), ...JSON.parse(l.value) }); // lokaler Cache zuerst
         }
       } catch (e) {}
@@ -467,7 +565,7 @@ export default function App() {
     try { if (typeof window !== "undefined" && window.storage) await window.storage.set("btb_v2", JSON.stringify({ day, positions, archive, ...next })); } catch (e) {}
   };
   const persistLists = async (l) => {
-    try { if (typeof window !== "undefined" && window.storage) await window.storage.set("btb_lists_v1", JSON.stringify(l)); } catch (e) {}
+    try { if (typeof window !== "undefined" && window.storage) await window.storage.set("btb_lists_v2", JSON.stringify(l)); } catch (e) {}
   };
   const persistSession = async (s) => {
     try { if (typeof window !== "undefined" && window.storage) { if (s) await window.storage.set("btb_session", JSON.stringify(s)); else await window.storage.delete("btb_session"); } } catch (e) {}
@@ -492,11 +590,11 @@ export default function App() {
   const sektOpts = useMemo(() => lists.sektionen.filter(Boolean).map((s) => ({ value: s, label: s })), [lists.sektionen]);
   const taetOpts = useMemo(() => lists.taetigkeiten.filter(Boolean).map((s) => ({ value: s, label: s })), [lists.taetigkeiten]);
   const rollenOpts = useMemo(() => lists.rollen.filter(Boolean).map((s) => ({ value: s, label: s })), [lists.rollen]);
-  const basOpts = useMemo(() => lists.bas.filter((b) => b.code).map((b) => ({ value: b.code, code: b.code, labelShort: b.name, label: `${b.code} – ${b.name}`, group: b.group })), [lists.bas]);
+  const basOpts = useMemo(() => lists.bas.filter((b) => b.code).map((b) => ({ value: b.code, code: b.code, labelShort: b.name, label: `${b.code} – ${b.name}`, group: b.group, sub: (b.desc || "").slice(0, 95) })), [lists.bas]);
   const geraeteTypOpts = useMemo(() => lists.geraete.filter((g) => g.typ).map((g) => ({ value: g.typ, label: g.typ })), [lists.geraete]);
   const unitsOf = (typ) => lists.geraete.find((g) => g.typ === typ)?.units.filter(Boolean) || [];
   const basName = (code) => lists.bas.find((b) => b.code === code)?.name || code || "";
-  const basMeta = (code) => { const b = lists.bas.find((x) => x.code === code); const lvm = BAS_LV[code]; return { name: b?.name || code, lv: lvm?.lv, me: lvm?.me, desc: b?.desc || "" }; };
+  const basMeta = (code) => { const b = lists.bas.find((x) => x.code === code); const lvm = BAS_LV[code]; return { name: b?.name || code, lv: lvm?.lv, me: lvm?.me, desc: b?.desc || "", wann: b?.wann || "" }; };
 
   /* --- Wizard --- */
   const startNew = () => { setDraft(emptyDraft()); setEditingId(null); setStep(0); setView("wizard"); };
@@ -507,7 +605,19 @@ export default function App() {
   const delRow = (key, id) => setDraft((d) => ({ ...d, [key]: d[key].length > 1 ? d[key].filter((x) => x.id !== id) : d[key] }));
   const copyLast = (key) => { const last = positions[0]; if (last && last[key]?.length) setDraft((d) => ({ ...d, [key]: last[key].map((x) => ({ ...x, id: uid() })) })); };
   const applyBasInfo = () => { const m = basMeta(draft.bas); setDraft((d) => ({ ...d, beschreibung: d.beschreibung || m.lv || m.desc || "", einheit: d.einheit || m.me || "" })); };
-  const canNext = step !== 0 || (draft.sektion && draft.taetigkeit && draft.bas);
+  // Pflichtfelder je Schritt
+  const persComplete = draft.personal.filter((p) => p.rolle && num(p.anzahl) > 0 && num(p.stunden) > 0);
+  const persIncomplete = draft.personal.some((p) => (p.rolle || p.anzahl || p.stunden) && !(p.rolle && num(p.anzahl) > 0 && num(p.stunden) > 0));
+  const gerIncomplete = draft.geraete.some((g) => g.typ && !(num(g.anzahl) > 0 && num(g.stunden) > 0 && (unitsOf(g.typ).length === 0 || g.geraet)));
+  const stepValid = [
+    !!(draft.sektion && draft.taetigkeit && draft.bas && (draft.vorhaben || draft.vorhabenUeb === "Ja")),
+    !!(draft.beschreibung && draft.beschreibung.trim() && num(draft.menge) > 0 && draft.einheit),
+    persComplete.length >= 1 && !persIncomplete,
+    !gerIncomplete,
+    true,
+  ];
+  const canNext = stepValid[step];
+  const canGoTo = (i) => i <= step || stepValid.slice(0, i).every(Boolean);
 
   const savePosition = () => {
     const exists = positions.some((p) => p.id === draft.id);
@@ -591,7 +701,7 @@ export default function App() {
         <div className="mx-auto max-w-3xl px-4 pt-4">
           <div className="flex items-center gap-1.5">
             {STEPS.map((s, i) => (
-              <button key={s} onClick={() => (i < step || canNext) && setStep(i)} disabled={i > step && !canNext} className="group flex-1 text-left">
+              <button key={s} onClick={() => canGoTo(i) && setStep(i)} disabled={!canGoTo(i)} className="group flex-1 text-left">
                 <div className={`h-1.5 rounded-full transition ${i <= step ? "bg-amber-500" : "bg-slate-200"}`} />
                 <span className={`mt-1 hidden text-[10px] font-semibold uppercase tracking-wider sm:block ${i === step ? "text-amber-700" : i < step ? "text-slate-500" : "text-slate-300"}`}>{s}</span>
               </button>
@@ -648,19 +758,20 @@ export default function App() {
                 </div>
                 <Combo value={draft.bas} onChange={(v) => setD("bas", v)} options={basOpts} />
               </div>
-              {draft.bas && (() => { const m = basMeta(draft.bas); return (m.lv || m.desc) ? (
+              {draft.bas && (() => { const m = basMeta(draft.bas); return (m.lv || m.desc || m.wann) ? (
                 <div className="rounded-lg border border-sky-200 bg-sky-50/70 p-3">
                   <div className="flex items-start gap-2">
                     <Info size={15} className="mt-0.5 shrink-0 text-sky-700" />
                     <div className="min-w-0 flex-1">
                       {m.lv && <p className="text-sm"><span className="font-semibold text-slate-800">LV-Leistung: </span><span className="text-slate-700">{m.lv}</span>{m.me && <span className="ml-1.5 rounded bg-sky-100 px-1.5 py-0.5 font-mono text-xs text-sky-800">{m.me}</span>}</p>}
-                      {m.desc && <p className="text-sm text-slate-600">{m.desc}</p>}
+                      {m.desc && <p className="text-sm text-slate-700"><span className="font-semibold text-slate-800">Was steckt drin: </span>{m.desc}</p>}
+                      {m.wann && <p className="mt-1 text-sm text-slate-600"><span className="font-semibold text-slate-800">Wann wählen: </span>{m.wann}</p>}
                       <button onClick={applyBasInfo} className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:underline"><Wand2 size={12} /> Beschreibung & Einheit übernehmen</button>
                     </div>
                   </div>
                 </div>
               ) : null; })()}
-              {!canNext && <p className="text-xs text-slate-400">Sektion, Tätigkeit und BAS auswählen, um fortzufahren.</p>}
+              {!canNext && <p className="text-xs text-amber-700">Bitte Sektion, Vorhaben (oder „Vorhabenübergreifend: Ja"), Tätigkeit und BAS auswählen.</p>}
             </div>
           )}
 
@@ -673,6 +784,7 @@ export default function App() {
                 <Field label="Menge"><input type="number" inputMode="decimal" className={inputCls} value={draft.menge} onChange={(e) => setD("menge", e.target.value)} placeholder="0" /></Field>
                 <Field label="Einheit"><Combo value={draft.einheit} onChange={(v) => setD("einheit", v)} options={EINHEITEN.map((u) => ({ value: u, label: u }))} placeholder="–" /></Field>
               </div>
+              {!canNext && <p className="text-xs text-amber-700">Beschreibung, Menge (&gt; 0) und Einheit ausfüllen.</p>}
             </div>
           )}
 
@@ -695,6 +807,7 @@ export default function App() {
                 ))}
               </div>
               <AddBtn onClick={() => addRow("personal", { rolle: "", anzahl: "", stunden: "" })}>Rolle hinzufügen</AddBtn>
+              {!canNext && <p className="mt-2 text-xs text-amber-700">Mindestens eine Person mit Rolle, Anzahl (&gt; 0) und Stunden (&gt; 0). Angefangene Zeilen bitte vervollständigen oder entfernen.</p>}
             </div>
           )}
 
@@ -724,6 +837,7 @@ export default function App() {
                 })}
               </div>
               <AddBtn onClick={() => addRow("geraete", { typ: "", geraet: "", anzahl: "1", stunden: "" })}>Gerät hinzufügen</AddBtn>
+              {gerIncomplete && <p className="mt-2 text-xs text-amber-700">Bei gewähltem Gerät: genaues Gerät (falls hinterlegt), Anzahl (&gt; 0) und Betriebsstunden (&gt; 0) ausfüllen – oder die Zeile entfernen. Geräte sind sonst optional.</p>}
             </div>
           )}
 
@@ -1064,8 +1178,8 @@ function BasEditor({ bas, onChange }) {
   const ql = q.trim().toLowerCase();
   const setRow = (i, patch) => onChange(bas.map((b, k) => (k === i ? { ...b, ...patch } : b)));
   const del = (i) => onChange(bas.filter((_, k) => k !== i));
-  const add = () => onChange([{ code: "", name: "", group: "", desc: "" }, ...bas]);
-  const visible = bas.map((b, i) => ({ b, i })).filter(({ b }) => !ql || `${b.code} ${b.name} ${b.group} ${b.desc}`.toLowerCase().includes(ql));
+  const add = () => onChange([{ code: "", name: "", group: "", desc: "", wann: "" }, ...bas]);
+  const visible = bas.map((b, i) => ({ b, i })).filter(({ b }) => !ql || `${b.code} ${b.name} ${b.group} ${b.desc} ${b.wann || ""}`.toLowerCase().includes(ql));
   return (
     <EditorCard icon={ListChecks} title="BAS (mit Inhalt)" count={bas.length}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -1084,7 +1198,10 @@ function BasEditor({ bas, onChange }) {
             </div>
             <div className="mt-2 grid gap-2 sm:grid-cols-[110px_1fr]">
               <input className={inputCls} value={b.group || ""} placeholder="Gruppe" onChange={(e) => setRow(i, { group: e.target.value })} />
-              <textarea rows={2} className={`${inputCls} py-2`} value={b.desc || ""} placeholder="Inhalt / was ist in diesem BAS enthalten…" onChange={(e) => setRow(i, { desc: e.target.value })} />
+              <textarea rows={2} className={`${inputCls} py-2`} value={b.desc || ""} placeholder="Was steckt drin (Inhalt)…" onChange={(e) => setRow(i, { desc: e.target.value })} />
+            </div>
+            <div className="mt-2 sm:pl-[118px]">
+              <textarea rows={2} className={`${inputCls} py-2`} value={b.wann || ""} placeholder="Wann dieses BAS wählen / wofür…" onChange={(e) => setRow(i, { wann: e.target.value })} />
             </div>
           </div>
         ))}
@@ -1132,8 +1249,9 @@ function BasModal({ meta, code, onClose }) {
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={18} /></button>
         </div>
         {meta.lv && <p className="mb-2 text-sm"><span className="font-semibold text-slate-800">Verknüpfte LV-Leistung: </span><span className="text-slate-700">{meta.lv}</span>{meta.me && <span className="ml-1.5 rounded bg-sky-100 px-1.5 py-0.5 font-mono text-xs text-sky-800">{meta.me}</span>}</p>}
-        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Inhalt / Leistungsumfang</p>
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Was steckt drin</p>
         <p className="text-sm leading-relaxed text-slate-700">{meta.desc || "Noch keine Beschreibung hinterlegt. Unter „Listen verwalten“ → BAS kannst du beschreiben, was in diesem BAS enthalten ist."}</p>
+        {meta.wann && <><p className="mb-1 mt-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Wann dieses BAS wählen</p><p className="text-sm leading-relaxed text-slate-700">{meta.wann}</p></>}
       </div>
     </div>
   );
