@@ -282,6 +282,7 @@ function buildXML(day, positions, kurz) {
       `      <vorhaben>${xmlEsc(p.vorhaben)}</vorhaben>`,
       `      <vorhabenuebergreifend>${xmlEsc(p.vorhabenUeb)}</vorhabenuebergreifend>`,
       `      <taetigkeit>${xmlEsc(p.taetigkeit)}</taetigkeit>`,
+      `      <nachunternehmer>${xmlEsc(p.nachunternehmer)}</nachunternehmer>`,
       `      <bas code="${xmlEsc(p.bas)}" kurztext="${xmlEsc(kurz(p.bas))}"/>`,
       `      <beschreibung>${xmlEsc(p.beschreibung)}</beschreibung>`,
       `      <menge einheit="${xmlEsc(p.einheit)}">${num(p.menge)}</menge>`,
@@ -311,7 +312,7 @@ function buildWorkbook(day, positions, kurz) {
     Nr: i + 1, Datum: day.datum, Projekt: day.projekt, Bauleiter: day.bauleiter, Gewerk: day.gewerk,
     "Arbeit von": day.arbeitStart, "Arbeit bis": day.arbeitEnde, Sektion: p.sektion,
     Vorhaben: p.vorhaben, "Vorhabenübergreifend": p.vorhabenUeb,
-    Tätigkeit: p.taetigkeit, BAS: p.bas, Kurztext: kurz(p.bas), Beschreibung: p.beschreibung,
+    Tätigkeit: p.taetigkeit, Nachunternehmer: p.nachunternehmer || "", BAS: p.bas, Kurztext: kurz(p.bas), Beschreibung: p.beschreibung,
     Menge: num(p.menge), Einheit: p.einheit, Personenstunden: phOf(p), Gerätestunden: ghOf(p),
   }));
   const persRows = [];
@@ -380,7 +381,7 @@ async function buildPdfBlob(day, positions, kurz) {
     head: [["Nr", "BAS", "Sektion · Vorhaben", "Tätigkeit", "Beschreibung", "Menge", "P-Std", "G-Std"]],
     body: positions.map((p, i) => [
       i + 1, p.bas, `${p.sektion}${p.vorhaben ? " · " + p.vorhaben : ""}${p.vorhabenUeb === "Ja" ? " · übergr." : ""}`,
-      p.taetigkeit, p.beschreibung || "", num(p.menge) ? `${fmt(num(p.menge))} ${p.einheit}` : "", fmt(phOf(p)), fmt(ghOf(p)),
+      p.taetigkeit + (p.nachunternehmer ? "\nNU: " + p.nachunternehmer : ""), p.beschreibung || "", num(p.menge) ? `${fmt(num(p.menge))} ${p.einheit}` : "", fmt(phOf(p)), fmt(ghOf(p)),
     ]),
     styles: { fontSize: 8, cellPadding: 3, valign: "top", overflow: "linebreak" },
     headStyles: { fillColor: [15, 30, 70], textColor: 255, fontSize: 8 },
@@ -462,7 +463,7 @@ async function shareReport(day, positions, kurz) {
 
 const emptyDay = () => ({ datum: today(), projekt: "SuedLink Los 3", bauleiter: "", gewerk: "", arbeitStart: "", arbeitEnde: "", wetter: "heiter", tempMin: "", tempMax: "", stillstand: [], vorkommnisse: [] });
 const emptyDraft = () => ({
-  id: uid(), sektion: "", vorhabenUeb: "Nein", vorhaben: "", taetigkeit: "", bas: "", beschreibung: "", menge: "", einheit: "",
+  id: uid(), sektion: "", vorhabenUeb: "Nein", vorhaben: "", taetigkeit: "", nachunternehmer: "", bas: "", beschreibung: "", menge: "", einheit: "",
   personal: [{ id: uid(), rolle: "", anzahl: "", stunden: "" }],
   geraete: [{ id: uid(), typ: "", geraet: "", anzahl: "1", stunden: "" }],
 });
@@ -806,6 +807,7 @@ export default function App() {
                 <img src={VORHABEN_IMG} alt="Vorhaben Querschnitt – Graben, Schutzstreifen, HGÜ 525 kV" className="w-full rounded-sm border border-[#C8D2E6] bg-white" />
               </div>
               <Field label="Tätigkeit"><Combo value={draft.taetigkeit} onChange={(v) => setD("taetigkeit", v)} options={taetOpts} /></Field>
+              <Field label="Nachunternehmer" hint="(optional)"><input className={inputCls} value={draft.nachunternehmer || ""} onChange={(e) => setD("nachunternehmer", e.target.value)} placeholder="Firma, falls ein Nachunternehmer die Leistung ausführt" /></Field>
               <div>
                 <div className="mb-1 flex items-center justify-between">
                   <Label hint="(Leistungs-/Kostenschlüssel)">BAS</Label>
@@ -907,6 +909,7 @@ export default function App() {
                   <SumLine k="Sektion" v={draft.sektion || "—"} />
                   <SumLine k="Vorhaben" v={`${draft.vorhaben || "—"}${draft.vorhabenUeb === "Ja" ? " · übergreifend" : ""}`} />
                   <SumLine k="Tätigkeit" v={draft.taetigkeit || "—"} />
+                  {draft.nachunternehmer && <SumLine k="Nachuntern." v={draft.nachunternehmer} />}
                   <SumLine k="BAS" v={draft.bas ? `${draft.bas} – ${basName(draft.bas)}` : "—"} />
                   <SumLine k="Menge" v={num(draft.menge) ? `${fmt(num(draft.menge))} ${draft.einheit}` : "—"} />
                   {draft.beschreibung && <p className="pt-1 text-[#0F1E46]/70">{draft.beschreibung}</p>}
@@ -943,55 +946,109 @@ export default function App() {
     const W = WETTER.find((w) => w.key === day.wetter);
     const still = (day.stillstand || []).filter((x) => x.start || x.ende || x.grund || x.sektion);
     const vork = (day.vorkommnisse || []).filter((v) => (v.text || "").trim());
-    const KV = ({ k, v }) => (<div className="flex gap-3 text-sm"><span className="w-28 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-[#677BA4]">{k}</span><span className="text-[#0F1E46]">{v || "—"}</span></div>);
+    // Arbeitszeit des Tages in Stunden (aus Start/Ende), 0 wenn nicht eingetragen
+    const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ""); return m ? +m[1] * 60 + +m[2] : null; };
+    const a0 = toMin(day.arbeitStart), a1 = toMin(day.arbeitEnde);
+    const dayH = a0 !== null && a1 !== null && a1 > a0 ? (a1 - a0) / 60 : 0;
+    // Summen je Gerät bzw. Rolle über alle Leistungen des Tages
+    const agg = (rows) => { const m = new Map(); rows.forEach(({ label, anz, std }) => { const e = m.get(label) || { label, count: 0, hours: 0 }; e.count = Math.max(e.count, anz); e.hours += anz * std; m.set(label, e); }); return [...m.values()].sort((x, y) => y.hours - x.hours); };
+    const gerRows = agg(positions.flatMap((p) => p.geraete.filter((g) => g.typ).map((g) => ({ label: geraetLabel(g), anz: num(g.anzahl) || 1, std: num(g.stunden) }))));
+    const persRows = agg(positions.flatMap((p) => p.personal.filter((x) => x.rolle).map((x) => ({ label: x.rolle, anz: num(x.anzahl), std: num(x.stunden) }))));
+    const KV = ({ k, v }) => (<div className="flex gap-3 text-sm"><span className="w-24 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-[#677BA4]">{k}</span><span className="text-[#0F1E46]">{v || "—"}</span></div>);
+    const HoursTable = ({ title, icon: Icon, first, rows, unit }) => {
+      const sum = rows.reduce((t, r) => t + r.hours, 0);
+      return (
+        <section className="rounded-sm border border-[#C8D2E6] bg-white p-4">
+          <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-[#0F1E46]"><Icon size={16} /> {title} <span className="text-[#677BA4]">({rows.length})</span></h2>
+          {rows.length === 0 ? <p className="text-sm text-[#0F1E46]/70">Noch nichts erfasst.</p> : (
+            <table className="w-full border-collapse text-sm">
+              <thead><tr className="bg-[#0F1E46] text-left text-[11px] font-bold uppercase tracking-wider text-white">
+                <th className="px-2 py-1">{first}</th><th className="px-2 py-1 text-right">Anz.</th><th className="px-2 py-1 text-right">Std.</th><th className="px-2 py-1">Vom Arbeitstag</th>
+              </tr></thead>
+              <tbody>
+                {rows.map((r) => { const avail = r.count * dayH; const pct = avail > 0 ? r.hours / avail : 0; return (
+                  <tr key={r.label} className="border-b border-[#C8D2E6] align-top text-[#0F1E46]">
+                    <td className="px-2 py-1.5">{r.label}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.count)}</td>
+                    <td className="px-2 py-1.5 text-right font-bold tabular-nums">{fmt(r.hours)}</td>
+                    <td className="w-[38%] px-2 py-1.5">
+                      {avail > 0 ? (<>
+                        <div className="h-2 w-full bg-[#C8D2E6]"><div className={`h-2 ${pct > 1 ? "bg-[#C62828]" : "bg-[#0F1E46]"}`} style={{ width: `${Math.min(pct, 1) * 100}%` }} /></div>
+                        <p className={`mt-0.5 text-[11px] tabular-nums ${pct > 1 ? "font-bold text-[#C62828]" : "text-[#0F1E46]/70"}`}>{fmt(r.hours)} von {fmt(avail)} Std. · {Math.round(pct * 100)} %</p>
+                      </>) : <span className="text-[11px] text-[#677BA4]">—</span>}
+                    </td>
+                  </tr>
+                ); })}
+                <tr className="font-bold text-[#0F1E46]"><td className="border-t-2 border-[#0F1E46] px-2 py-1.5">Summe</td><td className="border-t-2 border-[#0F1E46]" /><td className="border-t-2 border-[#0F1E46] px-2 py-1.5 text-right tabular-nums">{fmt(sum)}</td><td className="border-t-2 border-[#0F1E46] px-2 py-1.5 text-[11px] font-normal">{unit}</td></tr>
+              </tbody>
+            </table>
+          )}
+        </section>
+      );
+    };
     return (
       <Shell>
         <TopBar title="Übersicht" subtitle={`${dateDE(day.datum)} · alles auf einer Seite`}
           left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-sm bg-white/10 text-white hover:bg-white/20" aria-label="Zurück"><ChevronLeft size={18} /></button>} />
-        <main className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-4 sm:py-6">
+        <main className="mx-auto max-w-6xl space-y-4 px-3 py-4 sm:px-4 sm:py-6">
           <section className="rounded-sm border border-[#C8D2E6] border-l-4 border-l-[#FAD200] bg-white p-4">
             <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-bold text-[#0F1E46]">Kopfdaten</h2><button onClick={() => setView("home")} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0F1E46] underline"><Pencil size={12} /> ändern</button></div>
-            <div className="space-y-1">
-              <KV k="Projekt" v={day.projekt} /><KV k="Datum" v={dateDE(day.datum)} /><KV k="Bauleiter" v={day.bauleiter} />
-              <KV k="Arbeitszeit" v={(day.arbeitStart || day.arbeitEnde) ? `${day.arbeitStart || "–"} – ${day.arbeitEnde || "–"}` : ""} />
-              <KV k="Gewerk" v={day.gewerk} /><KV k="Wetter" v={`${W ? W.label : ""} · ${day.tempMin || "–"}° / ${day.tempMax || "–"}° C`} />
-              <KV k="Summen" v={`${fmt(totals.ph)} Pers.-Std. · ${fmt(totals.gh)} Geräte-Std. · ${positions.length} Position(en)`} />
+            <div className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
+              <KV k="Projekt" v={day.projekt} /><KV k="Datum" v={dateDE(day.datum)} />
+              <KV k="Bauleiter" v={day.bauleiter} /><KV k="Gewerk" v={day.gewerk} />
+              <KV k="Arbeitszeit" v={(day.arbeitStart || day.arbeitEnde) ? `${day.arbeitStart || "–"} – ${day.arbeitEnde || "–"}${dayH ? ` (${fmt(dayH)} Std.)` : ""}` : ""} />
+              <KV k="Wetter" v={`${W ? W.label : ""} · ${day.tempMin || "–"}° / ${day.tempMax || "–"}° C`} />
             </div>
+            {!dayH && <p className="mt-2 text-xs text-[#C62828]">Arbeitszeit Start und Ende eintragen – dann zeigt die Übersicht, wie viel vom Arbeitstag Geräte und Personal im Einsatz waren.</p>}
           </section>
 
-          <h2 className="px-1 text-sm font-bold text-[#0F1E46]">Leistungen <span className="text-[#677BA4]">({positions.length})</span></h2>
-          {positions.length === 0 && <p className="rounded-sm border border-dashed border-[#96A8C7] bg-white p-4 text-sm text-[#0F1E46]/70">Noch keine Leistung erfasst.</p>}
-          {positions.map((p, i) => (
-            <section key={p.id} className="rounded-sm border border-[#C8D2E6] bg-white p-4">
-              <div className="flex items-start gap-3">
-                <span className="mt-0.5 rounded-sm bg-[#0F1E46] px-2 py-1 text-xs font-bold tabular-nums text-[#FAD200]">{p.bas}</span>
-                <div className="min-w-0 flex-1"><p className="font-semibold text-[#0F1E46]">{i + 1}. {basName(p.bas)}</p></div>
-                <button onClick={() => startEdit(p, true, "overview")} className="inline-flex items-center gap-1 rounded-sm border border-[#0F1E46] px-2.5 py-1.5 text-xs font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><Pencil size={13} /> Bearbeiten</button>
-                <button onClick={() => deletePosition(p.id)} className="rounded-sm p-1.5 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]" aria-label="Löschen"><Trash2 size={15} /></button>
-              </div>
-              <div className="mt-3 space-y-1">
-                <KV k="Sektion" v={p.sektion} />
-                <KV k="Vorhaben" v={`${p.vorhaben || "—"}${p.vorhabenUeb === "Ja" ? " · übergreifend" : ""}`} />
-                <KV k="Tätigkeit" v={p.taetigkeit} />
-                <KV k="Menge" v={num(p.menge) ? `${fmt(num(p.menge))} ${p.einheit}` : ""} />
-                <KV k="Beschreibung" v={p.beschreibung} />
-                <KV k="Personal" v={p.personal.filter((x) => x.rolle).map((x) => `${x.anzahl}× ${x.rolle} · ${x.stunden} Std.`).join(", ")} />
-                <KV k="Geräte" v={p.geraete.filter((x) => x.typ).map((x) => `${x.anzahl || 1}× ${geraetLabel(x)} · ${x.stunden} Std.`).join(", ")} />
-              </div>
+          <div className="grid items-start gap-4 lg:grid-cols-2">
+            <div className="space-y-3">
+              <h2 className="px-1 text-sm font-bold text-[#0F1E46]">Erfasste Leistungen <span className="text-[#677BA4]">({positions.length})</span></h2>
+              {positions.length === 0 && <p className="rounded-sm border border-dashed border-[#96A8C7] bg-white p-4 text-sm text-[#0F1E46]/70">Noch keine Leistung erfasst.</p>}
+              {positions.map((p, i) => (
+                <section key={p.id} className="rounded-sm border border-[#C8D2E6] bg-white p-3">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 rounded-sm bg-[#0F1E46] px-2 py-1 text-xs font-bold tabular-nums text-[#FAD200]">{p.bas}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-[#0F1E46]">{i + 1}. {basName(p.bas)}</p>
+                      <p className="text-xs text-[#0F1E46]/70">{p.sektion} · {p.vorhaben || "—"}{p.vorhabenUeb === "Ja" ? " · übergreifend" : ""} · {p.taetigkeit}</p>
+                      {p.nachunternehmer && <p className="text-xs text-[#0F1E46]"><span className="font-bold">Nachunternehmer:</span> {p.nachunternehmer}</p>}
+                      {p.beschreibung && <p className="mt-1 text-sm text-[#0F1E46]/70">{p.beschreibung}</p>}
+                      <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#0F1E46]">
+                        {num(p.menge) > 0 && <span className="font-bold"><Layers size={11} className="mr-0.5 inline" />{fmt(num(p.menge))} {p.einheit}</span>}
+                        <span><Users size={11} className="mr-0.5 inline" />{fmt(phOf(p))} Pers.-Std.</span>
+                        <span><Truck size={11} className="mr-0.5 inline" />{fmt(ghOf(p))} Geräte-Std.</span>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <button onClick={() => startEdit(p, true, "overview")} className="rounded-sm border border-[#0F1E46] p-2 text-[#0F1E46] hover:bg-[#DAE1F0]" aria-label="Bearbeiten"><Pencil size={15} /></button>
+                      <button onClick={() => deletePosition(p.id)} className="rounded-sm p-2 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]" aria-label="Löschen"><Trash2 size={15} /></button>
+                    </div>
+                  </div>
+                </section>
+              ))}
+              <button onClick={() => startNew(true, "overview")} className="inline-flex w-full items-center justify-center gap-2 rounded-sm border border-dashed border-[#96A8C7] bg-white px-4 py-3 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><Plus size={18} /> Leistung auf einer Seite erfassen</button>
+            </div>
+
+            <div className="space-y-4">
+              <HoursTable title="Geräte im Einsatz" icon={Truck} first="Gerät" rows={gerRows} unit="Geräte-Std." />
+              <HoursTable title="Personal im Einsatz" icon={Users} first="Rolle" rows={persRows} unit="Pers.-Std." />
+            </div>
+          </div>
+
+          <div className="grid items-start gap-4 lg:grid-cols-2">
+            <section className="rounded-sm border border-[#C8D2E6] bg-white p-4">
+              <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-bold text-[#0F1E46]">Stillstandszeiten <span className="text-[#677BA4]">({still.length})</span></h2><button onClick={() => setView("home")} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0F1E46] underline"><Pencil size={12} /> ändern</button></div>
+              {still.length === 0 ? <p className="text-sm text-[#0F1E46]/70">Keine.</p> : still.map((x, i) => (
+                <p key={x.id} className="border-b border-[#C8D2E6] py-1.5 text-sm text-[#0F1E46] last:border-0">{i + 1}. {x.sektion || "—"} · {x.vorhaben || "—"} · <span className="tabular-nums">{x.start || "–"}–{x.ende || "–"}</span> · {x.grund || "—"}</p>
+              ))}
             </section>
-          ))}
-          <button onClick={() => startNew(true, "overview")} className="inline-flex w-full items-center justify-center gap-2 rounded-sm border border-dashed border-[#96A8C7] bg-white px-4 py-3 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><Plus size={18} /> Leistung auf einer Seite erfassen</button>
-
-          <section className="rounded-sm border border-[#C8D2E6] bg-white p-4">
-            <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-bold text-[#0F1E46]">Stillstandszeiten <span className="text-[#677BA4]">({still.length})</span></h2><button onClick={() => setView("home")} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0F1E46] underline"><Pencil size={12} /> ändern</button></div>
-            {still.length === 0 ? <p className="text-sm text-[#0F1E46]/70">Keine.</p> : still.map((x, i) => (
-              <p key={x.id} className="border-b border-[#C8D2E6] py-1.5 text-sm text-[#0F1E46] last:border-0">{i + 1}. {x.sektion || "—"} · {x.vorhaben || "—"} · <span className="tabular-nums">{x.start || "–"}–{x.ende || "–"}</span> · {x.grund || "—"}</p>
-            ))}
-          </section>
-          <section className="rounded-sm border border-[#C8D2E6] bg-white p-4">
-            <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-bold text-[#0F1E46]">Besondere Vorkommnisse / Besucher <span className="text-[#677BA4]">({vork.length})</span></h2><button onClick={() => setView("home")} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0F1E46] underline"><Pencil size={12} /> ändern</button></div>
-            {vork.length === 0 ? <p className="text-sm text-[#0F1E46]/70">Keine.</p> : vork.map((v, i) => (<p key={v.id} className="border-b border-[#C8D2E6] py-1.5 text-sm text-[#0F1E46] last:border-0">{i + 1}. {v.text}</p>))}
-          </section>
+            <section className="rounded-sm border border-[#C8D2E6] bg-white p-4">
+              <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-bold text-[#0F1E46]">Besondere Vorkommnisse / Besucher <span className="text-[#677BA4]">({vork.length})</span></h2><button onClick={() => setView("home")} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0F1E46] underline"><Pencil size={12} /> ändern</button></div>
+              {vork.length === 0 ? <p className="text-sm text-[#0F1E46]/70">Keine.</p> : vork.map((v, i) => (<p key={v.id} className="border-b border-[#C8D2E6] py-1.5 text-sm text-[#0F1E46] last:border-0">{i + 1}. {v.text}</p>))}
+            </section>
+          </div>
 
           {hasContent && <button onClick={() => { setPreviewData({ day, positions, back: "overview" }); setView("preview"); }} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-4 py-2.5 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><FileText size={16} /> Vorschau · PDF · Excel · XML</button>}
           <p className="pt-2 text-center text-[10px] uppercase tracking-[0.3em] text-[#0F1E46]/70">HABAU INFRA | BAUTAGESBERICHT | © 2026</p>
@@ -1054,7 +1111,7 @@ export default function App() {
                 <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <span className="rounded-sm bg-[#0F1E46] px-2 py-0.5 tabular-nums text-xs font-bold text-[#FAD200]">{p.bas}</span>
                   <b className="text-[#0F1E46]">{basName(p.bas)}</b>
-                  <span className="text-sm text-[#0F1E46]/70">{p.sektion}{p.vorhaben ? ` · ${p.vorhaben}` : ""}{p.vorhabenUeb === "Ja" ? " · übergr." : ""} · {p.taetigkeit}</span>
+                  <span className="text-sm text-[#0F1E46]/70">{p.sektion}{p.vorhaben ? ` · ${p.vorhaben}` : ""}{p.vorhabenUeb === "Ja" ? " · übergr." : ""} · {p.taetigkeit}{p.nachunternehmer ? ` · NU: ${p.nachunternehmer}` : ""}</span>
                   {num(p.menge) > 0 && <span className="ml-auto tabular-nums text-sm font-semibold text-[#0F1E46]">{fmt(num(p.menge))} {p.einheit}</span>}
                 </div>
                 {p.beschreibung && <p className="mb-3 text-sm text-[#0F1E46]/70">{p.beschreibung}</p>}
@@ -1179,7 +1236,7 @@ export default function App() {
                     <span className="mt-0.5 rounded-sm bg-[#0F1E46] px-2 py-1 tabular-nums text-xs font-bold text-[#FAD200]">{p.bas}</span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold text-[#0F1E46]">{basName(p.bas)}</p>
-                      <p className="truncate text-xs text-[#0F1E46]/70">{p.sektion} · {p.taetigkeit}</p>
+                      <p className="truncate text-xs text-[#0F1E46]/70">{p.sektion} · {p.taetigkeit}{p.nachunternehmer ? ` · NU: ${p.nachunternehmer}` : ""}</p>
                       <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[#0F1E46]/70">
                         {num(p.menge) > 0 && <span className="font-medium text-[#0F1E46]"><Layers size={11} className="mr-0.5 inline" />{fmt(num(p.menge))} {p.einheit}</span>}
                         <span><Users size={11} className="mr-0.5 inline" />{fmt(phOf(p))} Std.</span>
