@@ -217,10 +217,14 @@ const DEF_BAS = BAS_GROUPS.flatMap(([group, items]) =>
   items.map(([code, name]) => ({ code, name, group, desc: BAS_INFO_EXT[code]?.drin || BAS_EXTRA[code]?.desc || "", wann: BAS_INFO_EXT[code]?.wann || "" })));
 const BAS_LV = Object.fromEntries(Object.entries(BAS_EXTRA).filter(([, v]) => v.lv).map(([k, v]) => [k, { lv: v.lv, me: v.me }]));
 
+/* Pflichtangaben je Leistung (einstellbar unter Einstellungen → Pflichtfelder) */
+const DEF_PFLICHT = { sektion: true, vorhaben: true, taetigkeit: true, bas: true, beschreibung: true, menge: true, personal: true, geraete: false };
+
 const defaultLists = () => ({
   sektionen: [...DEF_SEKTIONEN], taetigkeiten: [...DEF_TAETIGKEITEN], rollen: [...DEF_ROLLEN],
   nachunternehmer: [],
   bas: DEF_BAS.map((b) => ({ ...b })), geraete: DEF_GERAETE.map((g) => ({ typ: g.typ, units: [...g.units] })),
+  pflicht: { ...DEF_PFLICHT },
 });
 
 // Sektion-Stammdaten (km, Bauwerke, Segment, Bauabschnitt) – als Info beim Auswählen.
@@ -332,9 +336,9 @@ function buildXML(day, positions, kurz) {
       `      <vorhabenuebergreifend>${xmlEsc(p.vorhabenUeb)}</vorhabenuebergreifend>`,
       `      <taetigkeit>${xmlEsc(p.taetigkeit)}</taetigkeit>`,
       `      <nachunternehmer>${xmlEsc(p.nachunternehmer)}</nachunternehmer>`,
-      `      <bas code="${xmlEsc(p.bas)}" kurztext="${xmlEsc(kurz(p.bas))}"/>`,
+      `      <bas code="${xmlEsc(p.bas || "")}" kurztext="${xmlEsc(kurz(p.bas))}"/>`,
       `      <beschreibung>${xmlEsc(p.beschreibung)}</beschreibung>`,
-      `      <menge einheit="${xmlEsc(p.einheit)}">${num(p.menge)}</menge>`,
+      `      <menge einheit="${xmlEsc(p.einheit || "")}">${num(p.menge)}</menge>`,
       `      <personenstunden>${phOf(p)}</personenstunden>`, `      <geraetestunden>${ghOf(p)}</geraetestunden>`, "      <personal>");
     p.personal.filter((x) => x.rolle).forEach((x) =>
       L.push(`        <person rolle="${xmlEsc(x.rolle)}" name="${xmlEsc(x.name)}" anzahl="${num(x.anzahl)}" stunden="${num(x.stunden)}"/>`));
@@ -362,18 +366,18 @@ function buildXML(day, positions, kurz) {
 function buildWorkbook(day, positions, kurz) {
   const posRows = positions.map((p, i) => ({
     Nr: i + 1, Datum: day.datum, Projekt: day.projekt, Bauleiter: day.bauleiter, Gewerk: day.gewerk,
-    "Arbeit von": day.arbeitStart, "Arbeit bis": day.arbeitEnde, Sektion: p.sektion,
+    "Arbeit von": day.arbeitStart, "Arbeit bis": day.arbeitEnde, Sektion: p.sektion || "",
     Vorhaben: p.vorhaben, "Vorhabenübergreifend": p.vorhabenUeb,
-    Tätigkeit: p.taetigkeit, Nachunternehmer: p.nachunternehmer || "", BAS: p.bas, Kurztext: kurz(p.bas), Beschreibung: p.beschreibung,
-    Menge: num(p.menge), Einheit: p.einheit, Personenstunden: phOf(p), Gerätestunden: ghOf(p),
+    Tätigkeit: p.taetigkeit || "", Nachunternehmer: p.nachunternehmer || "", BAS: p.bas || "", Kurztext: kurz(p.bas), Beschreibung: p.beschreibung || "",
+    Menge: num(p.menge), Einheit: p.einheit || "", Personenstunden: phOf(p), Gerätestunden: ghOf(p),
   }));
   const persRows = [];
   positions.forEach((p, i) => p.personal.filter((x) => x.rolle).forEach((x) => persRows.push({
-    Pos: i + 1, BAS: p.bas, Rolle: x.rolle, Name: x.name || "", Anzahl: num(x.anzahl), "Stunden/Person": num(x.stunden), Personenstunden: num(x.anzahl) * num(x.stunden),
+    Pos: i + 1, BAS: p.bas || "", Rolle: x.rolle, Name: x.name || "", Anzahl: num(x.anzahl), "Stunden/Person": num(x.stunden), Personenstunden: num(x.anzahl) * num(x.stunden),
   })));
   const gerRows = [];
   positions.forEach((p, i) => p.geraete.filter((x) => x.typ).forEach((x) => gerRows.push({
-    Pos: i + 1, BAS: p.bas, Gerätetyp: x.typ, "Gerät (genau)": x.geraet, Anzahl: num(x.anzahl), Betriebsstunden: num(x.stunden), Gerätestunden: (num(x.anzahl) || 1) * num(x.stunden),
+    Pos: i + 1, BAS: p.bas || "", Gerätetyp: x.typ, "Gerät (genau)": x.geraet, Anzahl: num(x.anzahl), Betriebsstunden: num(x.stunden), Gerätestunden: (num(x.anzahl) || 1) * num(x.stunden),
   })));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(posRows.length ? posRows : [{ Nr: "" }]), "Positionen");
@@ -434,8 +438,8 @@ async function buildPdfBlob(day, positions, kurz, fotos) {
     startY: y,
     head: [["Nr", "BAS", "Sektion · Vorhaben", "Tätigkeit", "Beschreibung", "Menge", "P-Std", "G-Std"]],
     body: positions.map((p, i) => [
-      i + 1, p.bas, `${p.sektion}${p.vorhaben ? " · " + p.vorhaben : ""}${p.vorhabenUeb === "Ja" ? " · übergr." : ""}`,
-      p.taetigkeit + (p.nachunternehmer ? "\nNU: " + p.nachunternehmer : ""), p.beschreibung || "", num(p.menge) ? `${fmt(num(p.menge))} ${p.einheit}` : "", fmt(phOf(p)), fmt(ghOf(p)),
+      i + 1, p.bas || "—", `${p.sektion || ""}${p.vorhaben ? " · " + p.vorhaben : ""}${p.vorhabenUeb === "Ja" ? " · übergr." : ""}`,
+      (p.taetigkeit || "") + (p.nachunternehmer ? "\nNU: " + p.nachunternehmer : ""), p.beschreibung || "", num(p.menge) ? `${fmt(num(p.menge))} ${p.einheit || ""}` : "", fmt(phOf(p)), fmt(ghOf(p)),
     ]),
     styles: { fontSize: 8, cellPadding: 3, valign: "top", overflow: "linebreak" },
     headStyles: { fillColor: [15, 30, 70], textColor: 255, fontSize: 8 },
@@ -449,7 +453,7 @@ async function buildPdfBlob(day, positions, kurz, fotos) {
     const gerRows = p.geraete.filter((x) => x.typ).map((x) => [geraetLabel(x), String(x.anzahl || ""), String(x.stunden || "")]);
     if (!persRows.length && !gerRows.length) return;
     if (y > H - 90) { doc.addPage(); y = 46; }
-    doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(`Pos. ${i + 1} · ${p.bas} ${kurz(p.bas)}`, M, y); y += 4;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(`Pos. ${i + 1} · ${p.bas ? p.bas + " " + kurz(p.bas) : "ohne BAS"}`, M, y); y += 4;
     autoTable(doc, {
       startY: y, theme: "grid",
       head: [["Personal", "Anz.", "Std.", "Gerät", "Anz.", "Std."]],
@@ -511,27 +515,44 @@ async function saveWithPicker(file) {
   const ws = await handle.createWritable(); await ws.write(file); await ws.close();
 }
 
+/* E-Mail-Entwurf (.eml) mit Anhängen: Outlook öffnet ihn als neue, noch nicht gesendete Nachricht */
+async function buildEml(subject, text, files) {
+  const b64 = (bytes) => { let bin = ""; const u = new Uint8Array(bytes); for (let i = 0; i < u.length; i += 0x8000) bin += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(bin).replace(/(.{76})/g, "$1\r\n"); };
+  const utf8 = (t) => new TextEncoder().encode(t);
+  const enc = (t) => "=?UTF-8?B?" + btoa(String.fromCharCode.apply(null, utf8(t))) + "?=";
+  const bd = "----=_Bautagesbericht_" + Date.now();
+  const parts = ["X-Unsent: 1", "Subject: " + enc(subject), "MIME-Version: 1.0", 'Content-Type: multipart/mixed; boundary="' + bd + '"', "",
+    "--" + bd, 'Content-Type: text/plain; charset="UTF-8"', "Content-Transfer-Encoding: base64", "", b64(utf8(text)), ""];
+  for (const f of files) {
+    parts.push("--" + bd, 'Content-Type: ' + (f.type || "application/octet-stream") + '; name="' + f.name + '"', "Content-Transfer-Encoding: base64",
+      'Content-Disposition: attachment; filename="' + f.name + '"', "", b64(await f.arrayBuffer()), "");
+  }
+  parts.push("--" + bd + "--", "");
+  return new Blob([parts.join("\r\n")], { type: "message/rfc822" });
+}
+
+/* Senden: PDF + XML. Handy -> Teilen-Menü (Outlook wählen). PC -> E-Mail-Entwurf für Outlook. Rückgabe: was passiert ist. */
 async function shareReport(day, positions, kurz, fotos) {
   const base = fileBase(day);
-  const xlsxOut = XLSX.write(buildWorkbook(day, positions, kurz), { bookType: "xlsx", type: "array" });
-  const xlsxFile = new File([xlsxOut], base + ".xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const xmlFile = new File([buildXML(day, positions, kurz)], base + ".xml", { type: "application/xml" });
   let pdfFile = null;
-  try { const pdf = await buildPdfBlob(day, positions, kurz, fotos); pdfFile = new File([pdf], base + ".pdf", { type: "application/pdf" }); } catch (e) { /* PDF nicht möglich -> nur Excel */ }
-  const files = pdfFile ? [pdfFile, xlsxFile] : [xlsxFile];
-
-  // 1) Handy: natives Teilen-Menü – Mail-App wählen, beide Dateien angehängt
-  if (navigator.canShare && navigator.canShare({ files })) {
-    try { await navigator.share({ files, title: "Bautagesbericht", text: `Bautagesbericht ${day.projekt} ${day.datum}` }); return; }
-    catch (e) { if (e && e.name === "AbortError") return; }
+  try { const pdf = await buildPdfBlob(day, positions, kurz, fotos); pdfFile = new File([pdf], base + ".pdf", { type: "application/pdf" }); } catch (e) { /* PDF nicht möglich -> nur XML */ }
+  const files = pdfFile ? [pdfFile, xmlFile] : [xmlFile];
+  const subject = `Bautagesbericht ${day.projekt || ""} ${dateDE(day.datum)}`.replace(/\s+/g, " ").trim();
+  const text = `Guten Tag,\n\nanbei der Bautagesbericht vom ${dateDE(day.datum)} (${positions.length} Leistungen) als PDF und als XML.\n\nViele Grüße${day.bauleiter ? "\n" + day.bauleiter : ""}`;
+  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+  // 1) Handy: natives Teilen-Menü – Outlook wählen, beide Dateien sind angehängt
+  if (mobile && navigator.canShare && navigator.canShare({ files })) {
+    try { await navigator.share({ files, title: subject, text }); return "share"; }
+    catch (e) { if (e && e.name === "AbortError") return "abort"; }
   }
-  // 2) PC (Chrome/Edge): Speicherort wählen (Computer oder SharePoint)
-  if (window.showSaveFilePicker) {
-    try { for (const f of files) await saveWithPicker(f); return; }
-    catch (e) { if (e && e.name === "AbortError") return; /* sonst Download */ }
+  // 2) PC: Entwurf als .eml – beim Öffnen zeigt Outlook eine neue E-Mail mit beiden Anhängen
+  if (!mobile) {
+    try { downloadBlob(await buildEml(subject, text, files), base + ".eml"); return "eml"; } catch (e) { /* weiter zum Download */ }
   }
   // 3) Fallback: beide Dateien herunterladen
-  if (pdfFile) downloadBlob(pdfFile, pdfFile.name);
-  downloadBlob(xlsxFile, xlsxFile.name);
+  files.forEach((f) => downloadBlob(f, f.name));
+  return "download";
 }
 
 const emptyDay = () => ({ datum: today(), projekt: "SuedLink Los 3", bauleiter: "", gewerk: "", arbeitStart: "", arbeitEnde: "", wetter: "heiter", tempMin: "", tempMax: "", stillstand: [], vorkommnisse: [], fotos: [] });
@@ -628,23 +649,6 @@ const AddBtn = ({ onClick, children }) => (
   <button onClick={onClick} className="mt-3 inline-flex items-center gap-2 rounded-sm bg-[#FAD200] px-3 py-2 text-sm font-bold text-[#0F1E46] transition hover:bg-[#FCE466]"><Plus size={16} /> {children}</button>
 );
 
-/* Einfacher Editor für eine Liste aus Texten */
-function StringListEditor({ items, onChange, placeholder }) {
-  const setAt = (i, v) => onChange(items.map((x, k) => (k === i ? v : x)));
-  const del = (i) => onChange(items.filter((_, k) => k !== i));
-  const add = () => onChange([...items, ""]);
-  return (
-    <div className="space-y-2">
-      {items.map((it, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <input className={inputCls} value={it} placeholder={placeholder} onChange={(e) => setAt(i, e.target.value)} />
-          <button onClick={() => del(i)} className="shrink-0 rounded-sm p-2 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]" aria-label="Löschen"><Trash2 size={16} /></button>
-        </div>
-      ))}
-      <AddBtn onClick={add}>Eintrag hinzufügen</AddBtn>
-    </div>
-  );
-}
 
 /* ===================== APP ===================== */
 
@@ -728,24 +732,202 @@ function HoursTable({ title, icon: Icon, first, rows, unit, dayH }) {
   );
 }
 
-/* Liste als Text: ein Eintrag pro Zeile */
-function LinesEditor({ items, onChange, placeholder }) {
+/* ===================== Einstellungen: Tabellen-Editoren ===================== */
+const TH_CLS = "px-2 py-2 text-left text-[11px] font-bold uppercase tracking-wider";
+const CELL_INPUT = "w-full min-h-[40px] rounded-sm border border-[#C8D2E6] bg-white px-2 text-sm text-[#0F1E46] placeholder-[#96A8C7] outline-none transition focus:border-[#0F1E46] focus:ring-1 focus:ring-[#0F1E46]";
+const DEL_BTN = "shrink-0 rounded-sm p-2 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]";
+
+/* Pflicht / Freiwillig als zwei Schaltflächen */
+function PflichtToggle({ value, onChange }) {
+  const cls = (on) => `min-h-[40px] flex-1 rounded-sm border px-3 text-sm font-semibold transition ${on ? "border-[#0F1E46] bg-[#0F1E46] text-white" : "border-[#C8D2E6] bg-white text-[#0F1E46] hover:bg-[#DAE1F0]"}`;
   return (
-    <div>
-      <textarea rows={Math.min(22, Math.max(8, items.length + 2))} className={`${inputCls} py-2 leading-7`} value={items.join("\n")} onChange={(e) => onChange(e.target.value.split("\n"))} placeholder={placeholder} spellCheck={false} />
-      <p className="mt-1 text-xs text-[#677BA4]">Ein Eintrag pro Zeile · {items.filter((x) => x.trim()).length} Einträge</p>
+    <div className="flex w-full max-w-[260px] gap-2">
+      <button type="button" aria-pressed={!!value} onClick={() => onChange(true)} className={cls(!!value)}>Pflicht</button>
+      <button type="button" aria-pressed={!value} onClick={() => onChange(false)} className={cls(!value)}>Freiwillig</button>
     </div>
   );
 }
-/* Geräte als Text: "Gerätetyp: Gerät 1; Gerät 2" */
-function GeraeteLines({ geraete, onChange }) {
-  const toText = (g) => g.filter((x) => x.typ).map((x) => `${x.typ}: ${(x.units || []).filter(Boolean).join("; ")}`).join("\n");
-  const [text, setText] = useState(() => toText(geraete));
-  const parse = (t) => t.split("\n").map((line) => { const i = line.indexOf(":"); const typ = (i < 0 ? line : line.slice(0, i)).trim(); const units = i < 0 ? [] : line.slice(i + 1).split(";").map((u) => u.trim()).filter(Boolean); return { typ, units }; }).filter((x) => x.typ);
+/* Hinweisleiste oberhalb jeder Liste */
+function PflichtBar({ frage, value, onChange }) {
+  return (
+    <div className="mb-4 border-l-4 border-[#FAD200] bg-[#DAE1F0] p-3">
+      <p className="mb-2 text-sm font-semibold text-[#0F1E46]">{frage}</p>
+      <PflichtToggle value={value} onChange={onChange} />
+      <p className="mt-2 text-xs text-[#0F1E46]/70">{value ? "Ohne diese Angabe kann die Leistung nicht gespeichert werden." : "Die Leistung kann auch ohne diese Angabe gespeichert werden."}</p>
+    </div>
+  );
+}
+function TableSearch({ value, onChange, placeholder }) {
+  return (
+    <div className="flex min-w-[180px] flex-1 items-center gap-2 rounded-sm border border-[#C8D2E6] bg-white px-3">
+      <Search size={15} className="text-[#677BA4]" />
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="min-h-[44px] w-full bg-transparent text-sm text-[#0F1E46] outline-none" />
+    </div>
+  );
+}
+
+/* Einfache Liste als Tabelle: Nr. | Bezeichnung | Löschen */
+function ListTable({ items, onChange, placeholder }) {
+  const [q, setQ] = useState("");
+  const wrap = React.useRef(null);
+  const focusRow = React.useRef(-1);
+  const ql = q.trim().toLowerCase();
+  const rows = items.map((v, i) => ({ v, i })).filter(({ v }) => !ql || (v || "").toLowerCase().includes(ql));
+  useEffect(() => {
+    if (focusRow.current < 0) return;
+    const el = wrap.current && wrap.current.querySelector(`[data-row="${focusRow.current}"]`);
+    focusRow.current = -1;
+    if (el) el.focus();
+  }, [items.length]);
+  const add = () => { setQ(""); focusRow.current = items.length; onChange([...items, ""]); };
+  return (
+    <div ref={wrap}>
+      {items.length > 15 && <div className="mb-3 flex"><TableSearch value={q} onChange={setQ} placeholder="Suchen…" /></div>}
+      <div className="relative overflow-x-auto">
+        <table className="w-full table-fixed border-collapse text-sm">
+          <thead><tr className="bg-[#0F1E46] text-white">
+            <th className={`${TH_CLS} w-14`}>Nr.</th><th className={TH_CLS}>Bezeichnung</th><th className="w-12 px-1 py-2"><span className="sr-only">Löschen</span></th>
+          </tr></thead>
+          <tbody>
+            {rows.map(({ v, i }) => (
+              <tr key={i} className="border-b border-[#C8D2E6]">
+                <td className="px-2 py-1.5 tabular-nums text-[#677BA4]">{i + 1}</td>
+                <td className="px-2 py-1.5"><input data-row={i} className={CELL_INPUT} value={v} placeholder={placeholder} onChange={(e) => onChange(items.map((x, k) => (k === i ? e.target.value : x)))} /></td>
+                <td className="px-1 py-1.5 text-center"><button onClick={() => onChange(items.filter((_, k) => k !== i))} className={DEL_BTN} aria-label="Zeile löschen"><Trash2 size={16} /></button></td>
+              </tr>
+            ))}
+            {rows.length === 0 && <tr><td colSpan={3} className="px-2 py-3 text-sm text-[#677BA4]">{items.length === 0 ? "Noch keine Einträge." : "Keine Treffer."}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <AddBtn onClick={add}>Zeile hinzufügen</AddBtn>
+    </div>
+  );
+}
+
+/* Geräte als Tabelle: Gerätetyp | Genaue Geräte (mit ; getrennt) | Anz. | Löschen */
+function GeraeteTable({ geraete, onChange }) {
+  const toRaw = (g) => (g.units || []).join("; ");
+  const [raw, setRaw] = useState(() => geraete.map(toRaw));
+  const lastEmitted = React.useRef(geraete);
+  const wrap = React.useRef(null);
+  const focusRow = React.useRef(-1);
+  const parse = (t) => t.split(";").map((u) => u.trim()).filter(Boolean);
+  useEffect(() => { // von außen geändert (Excel-Import, Standard) → Rohtext neu aufbauen
+    if (geraete !== lastEmitted.current) { lastEmitted.current = geraete; setRaw(geraete.map(toRaw)); }
+  }, [geraete]);
+  useEffect(() => {
+    if (focusRow.current < 0) return;
+    const el = wrap.current && wrap.current.querySelector(`[data-row="${focusRow.current}"]`);
+    focusRow.current = -1;
+    if (el) el.focus();
+  }, [geraete.length]);
+  const emit = (next, nextRaw) => { lastEmitted.current = next; setRaw(nextRaw); onChange(next); };
+  const setTyp = (i, typ) => emit(geraete.map((g, k) => (k === i ? { ...g, typ } : g)), raw);
+  const setUnits = (i, t) => emit(geraete.map((g, k) => (k === i ? { ...g, units: parse(t) } : g)), raw.map((r, k) => (k === i ? t : r)));
+  const del = (i) => emit(geraete.filter((_, k) => k !== i), raw.filter((_, k) => k !== i));
+  const add = () => { focusRow.current = geraete.length; emit([...geraete, { typ: "", units: [] }], [...raw, ""]); };
+  return (
+    <div ref={wrap}>
+      <div className="relative overflow-x-auto">
+        <table className="w-full min-w-[520px] table-fixed border-collapse text-sm">
+          <thead><tr className="bg-[#0F1E46] text-white">
+            <th className={`${TH_CLS} w-[32%]`}>Gerätetyp</th><th className={TH_CLS}>Genaue Geräte <span className="font-normal normal-case tracking-normal text-white/70">(mit ; trennen)</span></th>
+            <th className={`${TH_CLS} w-14 text-right`}>Anz.</th><th className="w-12 px-1 py-2"><span className="sr-only">Löschen</span></th>
+          </tr></thead>
+          <tbody>
+            {geraete.map((g, i) => (
+              <tr key={i} className="border-b border-[#C8D2E6] align-top">
+                <td className="px-2 py-1.5"><input data-row={i} className={CELL_INPUT} value={g.typ} placeholder="z. B. Kettenbagger" onChange={(e) => setTyp(i, e.target.value)} /></td>
+                <td className="px-2 py-1.5"><input className={CELL_INPUT} value={raw[i] ?? ""} placeholder="CAT 320; Liebherr R 926" spellCheck={false} onChange={(e) => setUnits(i, e.target.value)} /></td>
+                <td className="px-2 py-1.5 pt-3 text-right tabular-nums text-[#0F1E46]">{(g.units || []).length}</td>
+                <td className="px-1 py-1.5 text-center"><button onClick={() => del(i)} className={DEL_BTN} aria-label="Zeile löschen"><Trash2 size={16} /></button></td>
+              </tr>
+            ))}
+            {geraete.length === 0 && <tr><td colSpan={4} className="px-2 py-3 text-sm text-[#677BA4]">Noch keine Gerätetypen.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <AddBtn onClick={add}>Zeile hinzufügen</AddBtn>
+    </div>
+  );
+}
+
+/* BAS als breite Tabelle */
+function BasTable({ bas, onChange }) {
+  const [q, setQ] = useState("");
+  const wrap = React.useRef(null);
+  const focusTop = React.useRef(false);
+  const ql = q.trim().toLowerCase();
+  const rows = bas.map((b, i) => ({ b, i })).filter(({ b }) => !ql || `${b.code} ${b.name} ${b.group} ${b.desc} ${b.wann || ""}`.toLowerCase().includes(ql));
+  useEffect(() => {
+    if (!focusTop.current) return;
+    focusTop.current = false;
+    const el = wrap.current && wrap.current.querySelector('[data-row="0"]');
+    if (el) el.focus();
+  }, [bas.length]);
+  const setRow = (i, patch) => onChange(bas.map((b, k) => (k === i ? { ...b, ...patch } : b)));
+  const add = () => { setQ(""); focusTop.current = true; onChange([{ code: "", name: "", group: "", desc: "", wann: "" }, ...bas]); };
+  return (
+    <div ref={wrap}>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <TableSearch value={q} onChange={setQ} placeholder="BAS suchen (Code, Bezeichnung, Gruppe, Inhalt) …" />
+        <button onClick={add} className="inline-flex min-h-[44px] items-center gap-2 rounded-sm bg-[#FAD200] px-3 py-2 text-sm font-bold text-[#0F1E46] transition hover:bg-[#FCE466]"><Plus size={16} /> BAS hinzufügen</button>
+      </div>
+      <div className="relative overflow-x-auto">
+        <table className="w-full min-w-[900px] table-fixed border-collapse text-sm">
+          <thead><tr className="bg-[#0F1E46] text-white">
+            <th className={`${TH_CLS} w-[88px]`}>Code</th><th className={`${TH_CLS} w-[20%]`}>Bezeichnung</th><th className={`${TH_CLS} w-[14%]`}>Gruppe</th>
+            <th className={TH_CLS}>Was steckt drin</th><th className={TH_CLS}>Wann wählen</th><th className="w-12 px-1 py-2"><span className="sr-only">Löschen</span></th>
+          </tr></thead>
+          <tbody>
+            {rows.map(({ b, i }) => (
+              <tr key={i} className="border-b border-[#C8D2E6] align-top">
+                <td className="px-2 py-1.5"><input data-row={i} className={`${CELL_INPUT} tabular-nums`} value={b.code} placeholder="Code" onChange={(e) => setRow(i, { code: e.target.value })} /></td>
+                <td className="px-2 py-1.5"><input className={CELL_INPUT} value={b.name} placeholder="Bezeichnung" onChange={(e) => setRow(i, { name: e.target.value })} /></td>
+                <td className="px-2 py-1.5"><input className={CELL_INPUT} value={b.group || ""} placeholder="Gruppe" onChange={(e) => setRow(i, { group: e.target.value })} /></td>
+                <td className="px-2 py-1.5"><textarea rows={2} className={`${CELL_INPUT} py-1.5`} value={b.desc || ""} placeholder="Inhalt …" onChange={(e) => setRow(i, { desc: e.target.value })} /></td>
+                <td className="px-2 py-1.5"><textarea rows={2} className={`${CELL_INPUT} py-1.5`} value={b.wann || ""} placeholder="Wann wählen …" onChange={(e) => setRow(i, { wann: e.target.value })} /></td>
+                <td className="px-1 py-1.5 text-center"><button onClick={() => onChange(bas.filter((_, k) => k !== i))} className={DEL_BTN} aria-label="Zeile löschen"><Trash2 size={16} /></button></td>
+              </tr>
+            ))}
+            {rows.length === 0 && <tr><td colSpan={6} className="px-2 py-3 text-sm text-[#677BA4]">Keine Treffer.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* Tab "Pflichtfelder": alle Einstellungen in einer Tabelle */
+const PFLICHT_ROWS = [
+  ["sektion", "Sektion", "Streckenabschnitt der Leistung"],
+  ["vorhaben", "Vorhaben", "West/Ost oder „vorhabenübergreifend“"],
+  ["taetigkeit", "Tätigkeit", "Art der ausgeführten Arbeit"],
+  ["bas", "BAS", "Leistungs-/Kostenschlüssel"],
+  ["beschreibung", "Beschreibung", "Freitext: was wurde konkret ausgeführt"],
+  ["menge", "Menge und Einheit", "Menge größer 0 mit Einheit"],
+  ["personal", "Personal", "Mindestens eine Person mit Rolle, Anzahl und Stunden"],
+  ["geraete", "Geräte", "Mindestens ein Gerät mit Anzahl und Betriebsstunden"],
+];
+function PflichtTable({ pf, onChange }) {
   return (
     <div>
-      <textarea rows={Math.min(22, Math.max(8, text.split("\n").length + 2))} className={`${inputCls} py-2 leading-7`} value={text} onChange={(e) => { setText(e.target.value); onChange(parse(e.target.value)); }} placeholder={"Kettenbagger: CAT 320; Liebherr R 926\nRadlader: Volvo L90"} spellCheck={false} />
-      <p className="mt-1 text-xs text-[#677BA4]">Eine Zeile je Gerätetyp. Nach dem Doppelpunkt die genauen Geräte, getrennt mit Strichpunkt.</p>
+      <p className="mb-3 text-sm text-[#0F1E46]">Hier legst du fest, welche Angaben beim Erfassen einer Leistung Pflicht sind.</p>
+      <table className="w-full table-fixed border-collapse text-sm">
+        <thead><tr className="bg-[#0F1E46] text-white">
+          <th className={`${TH_CLS} w-[34%] sm:w-[22%]`}>Feld</th><th className={`${TH_CLS} hidden sm:table-cell`}>Bedeutung</th><th className={`${TH_CLS} w-[66%] sm:w-[280px]`}>Pflicht / Freiwillig</th>
+        </tr></thead>
+        <tbody>
+          {PFLICHT_ROWS.map(([k, label, was]) => (
+            <tr key={k} data-pflicht={k} className="border-b border-[#C8D2E6] align-middle">
+              <td className="px-2 py-2 font-semibold text-[#0F1E46]">{label}<span className="mt-0.5 block text-xs font-normal text-[#0F1E46]/70 sm:hidden">{was}</span></td>
+              <td className="hidden px-2 py-2 text-[#0F1E46]/70 sm:table-cell">{was}</td>
+              <td className="px-2 py-2"><PflichtToggle value={pf[k]} onChange={(v) => onChange({ ...pf, [k]: v })} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -764,8 +946,9 @@ export default function App() {
   const [listsErr, setListsErr] = useState(""); // Hinweis bei Speicher-/Ladeproblemen
   const [fotoData, setFotoData] = useState({}); // id -> Bild (Data-URL), getrennt vom Bericht gespeichert
   const [localEdit, setLocalEdit] = useState(false); // Listen ohne Anmeldung, nur auf diesem Gerät
-  const [listsTab, setListsTab] = useState("sektionen");
+  const [listsTab, setListsTab] = useState("pflicht");
   const [listsMsg, setListsMsg] = useState("");
+  const [sendMsg, setSendMsg] = useState(""); // Hinweis nach „Senden“
   const [copyOpen, setCopyOpen] = useState(false); // Dialog: Leistungen aus früherem Tag übernehmen
 
   useEffect(() => {
@@ -893,15 +1076,30 @@ export default function App() {
   const delRow = (key, id) => setDraft((d) => ({ ...d, [key]: d[key].length > 1 ? d[key].filter((x) => x.id !== id) : d[key] }));
   const copyLast = (key) => { const last = positions[0]; if (last && last[key]?.length) setDraft((d) => ({ ...d, [key]: last[key].map((x) => ({ ...x, id: uid() })) })); };
   const applyBasInfo = () => { const m = basMeta(draft.bas); setDraft((d) => ({ ...d, beschreibung: d.beschreibung || m.lv || m.desc || "", einheit: d.einheit || m.me || "" })); };
-  // Pflichtfelder je Schritt
+  // Pflichtfelder je Schritt (einstellbar)
+  const pf = { ...DEF_PFLICHT, ...(lists.pflicht || {}) };
   const persComplete = draft.personal.filter((p) => p.rolle && num(p.anzahl) > 0 && num(p.stunden) > 0);
   const persIncomplete = draft.personal.some((p) => (p.rolle || p.anzahl || p.stunden) && !(p.rolle && num(p.anzahl) > 0 && num(p.stunden) > 0));
   const gerIncomplete = draft.geraete.some((g) => g.typ && !(num(g.anzahl) > 0 && num(g.stunden) > 0 && (unitsOf(g.typ).length === 0 || g.geraet)));
+  const gerComplete = draft.geraete.filter((g) => g.typ && num(g.anzahl) > 0 && num(g.stunden) > 0 && (unitsOf(g.typ).length === 0 || g.geraet));
+  const descOk = !!(draft.beschreibung && draft.beschreibung.trim());
+  const mengeOk = num(draft.menge) > 0;
+  const missA = [
+    pf.sektion && !draft.sektion && "Sektion",
+    pf.vorhaben && !(draft.vorhaben || draft.vorhabenUeb === "Ja") && "Vorhaben (oder „Vorhabenübergreifend: Ja“)",
+    pf.taetigkeit && !draft.taetigkeit && "Tätigkeit",
+    pf.bas && !draft.bas && "BAS",
+  ].filter(Boolean);
+  const missB = [
+    pf.beschreibung && !descOk && "Beschreibung",
+    pf.menge && !mengeOk && "Menge (> 0)",
+    (pf.menge || mengeOk) && !draft.einheit && "Einheit",
+  ].filter(Boolean);
   const stepValid = [
-    !!(draft.sektion && draft.taetigkeit && draft.bas && (draft.vorhaben || draft.vorhabenUeb === "Ja")),
-    !!(draft.beschreibung && draft.beschreibung.trim() && num(draft.menge) > 0 && draft.einheit),
-    persComplete.length >= 1 && !persIncomplete,
-    !gerIncomplete,
+    !!((!pf.sektion || draft.sektion) && (!pf.taetigkeit || draft.taetigkeit) && (!pf.bas || draft.bas) && (!pf.vorhaben || draft.vorhaben || draft.vorhabenUeb === "Ja")),
+    !!((!pf.beschreibung || descOk) && (!pf.menge || (mengeOk && draft.einheit)) && (!mengeOk || draft.einheit)),
+    !!((!pf.personal || persComplete.length >= 1) && !persIncomplete),
+    !!((!pf.geraete || gerComplete.length >= 1) && !gerIncomplete),
   ];
   const allValid = stepValid.every(Boolean);
 
@@ -939,19 +1137,19 @@ export default function App() {
         prev.menge += num(p.menge); map.set(k, prev);
       }
     });
-    return { ph, gh, mengen: [...map.values()].sort((a, b) => a.bas.localeCompare(b.bas)) };
+    return { ph, gh, mengen: [...map.values()].sort((a, b) => String(a.bas).localeCompare(String(b.bas))) };
   }, [positions]);
 
   /* ============ EINSTELLUNGEN / LISTEN ============ */
   if (view === "settings") {
     const needLogin = SB_ON && !session && !localEdit;
-    const TABS = [["sektionen", "Sektionen"], ["taetigkeiten", "Tätigkeiten"], ["rollen", "Rollen"], ["nachunternehmer", "Nachunternehmer"], ["geraete", "Geräte"], ["bas", "BAS"]];
+    const TABS = [["pflicht", "Pflichtfelder"], ["sektionen", "Sektionen"], ["taetigkeiten", "Tätigkeiten"], ["rollen", "Rollen"], ["nachunternehmer", "Nachunternehmer"], ["geraete", "Geräte"], ["bas", "BAS"]];
     return (
       <Shell>
         <TopBar title="Einstellungen" subtitle={session ? `Admin: ${session.email}` : localEdit ? "Listen nur auf diesem Gerät" : SB_ON ? "Anmeldung für gemeinsame Listen" : "Lokaler Modus"}
           left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-sm bg-white/10 text-white hover:bg-white/20" aria-label="Zurück"><ChevronLeft size={18} /></button>}
           right={session ? <button onClick={doLogout} className="inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/10"><LogOut size={15} /> <span className="hidden sm:inline">Abmelden</span></button> : null} />
-        <main className="mx-auto max-w-4xl space-y-4 px-3 py-4 sm:px-4 sm:py-6">
+        <main className={`mx-auto ${!needLogin && listsTab === "bas" ? "max-w-6xl" : "max-w-4xl"} space-y-4 px-3 py-4 sm:px-4 sm:py-6`}>
           {needLogin ? (
             <div className="min-w-0 space-y-4">
               <LoginCard onSubmit={async (email, pw) => { const s = await sbLogin(email, pw); setSession(s); persistSession(s); }} />
@@ -984,16 +1182,17 @@ export default function App() {
 
               <div className="flex flex-wrap gap-2">
                 {TABS.map(([k, l]) => (
-                  <button key={k} onClick={() => setListsTab(k)} className={`min-h-[40px] rounded-sm border px-3 text-sm font-semibold transition ${listsTab === k ? "border-[#0F1E46] bg-[#DAE1F0] text-[#0F1E46]" : "border-[#C8D2E6] bg-white text-[#0F1E46]/70 hover:bg-[#DAE1F0]"}`}>{l} <span className="text-[#677BA4]">{k === "bas" ? lists.bas.length : k === "geraete" ? lists.geraete.length : (lists[k] || []).filter((x) => x.trim()).length}</span></button>
+                  <button key={k} onClick={() => setListsTab(k)} className={`min-h-[40px] rounded-sm border px-3 text-sm font-semibold transition ${listsTab === k ? "border-[#0F1E46] bg-[#DAE1F0] text-[#0F1E46]" : "border-[#C8D2E6] bg-white text-[#0F1E46]/70 hover:bg-[#DAE1F0]"}`}>{l}{k !== "pflicht" && <> <span className="text-[#677BA4]">{k === "bas" ? lists.bas.length : k === "geraete" ? lists.geraete.length : (lists[k] || []).filter((x) => x.trim()).length}</span></>}</button>
                 ))}
               </div>
 
-              {listsTab === "sektionen" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><LinesEditor items={lists.sektionen} onChange={(v) => setListKey("sektionen", v)} placeholder="Sektion 1" /></section>}
-              {listsTab === "taetigkeiten" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><LinesEditor items={lists.taetigkeiten} onChange={(v) => setListKey("taetigkeiten", v)} placeholder="Unterboden ausheben" /></section>}
-              {listsTab === "rollen" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><LinesEditor items={lists.rollen} onChange={(v) => setListKey("rollen", v)} placeholder="Polier" /></section>}
-              {listsTab === "nachunternehmer" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><LinesEditor items={lists.nachunternehmer || []} onChange={(v) => setListKey("nachunternehmer", v)} placeholder="Name der Firma" /></section>}
-              {listsTab === "geraete" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><GeraeteLines key={listsMsg} geraete={lists.geraete} onChange={(v) => setListKey("geraete", v)} /></section>}
-              {listsTab === "bas" && <BasEditor bas={lists.bas} onChange={(v) => setListKey("bas", v)} />}
+              {listsTab === "pflicht" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><PflichtTable pf={pf} onChange={(v) => setListKey("pflicht", v)} /></section>}
+              {listsTab === "sektionen" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><PflichtBar frage="Muss beim Erfassen einer Leistung eine Sektion gewählt werden?" value={pf.sektion} onChange={(v) => setListKey("pflicht", { ...pf, sektion: v })} /><ListTable items={lists.sektionen} onChange={(v) => setListKey("sektionen", v)} placeholder="Sektion 1" /></section>}
+              {listsTab === "taetigkeiten" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><PflichtBar frage="Muss beim Erfassen einer Leistung eine Tätigkeit gewählt werden?" value={pf.taetigkeit} onChange={(v) => setListKey("pflicht", { ...pf, taetigkeit: v })} /><ListTable items={lists.taetigkeiten} onChange={(v) => setListKey("taetigkeiten", v)} placeholder="Unterboden ausheben" /></section>}
+              {listsTab === "rollen" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><PflichtBar frage="Muss jede Leistung mindestens eine Person enthalten?" value={pf.personal} onChange={(v) => setListKey("pflicht", { ...pf, personal: v })} /><ListTable items={lists.rollen} onChange={(v) => setListKey("rollen", v)} placeholder="Polier" /></section>}
+              {listsTab === "nachunternehmer" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><div className="mb-4 border-l-4 border-[#FAD200] bg-[#DAE1F0] p-3 text-sm text-[#0F1E46]">Ohne Auswahl gilt die Leistung als Eigenleistung.</div><ListTable items={lists.nachunternehmer || []} onChange={(v) => setListKey("nachunternehmer", v)} placeholder="Name der Firma" /></section>}
+              {listsTab === "geraete" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><PflichtBar frage="Muss jede Leistung mindestens ein Gerät enthalten?" value={pf.geraete} onChange={(v) => setListKey("pflicht", { ...pf, geraete: v })} /><GeraeteTable geraete={lists.geraete} onChange={(v) => setListKey("geraete", v)} /></section>}
+              {listsTab === "bas" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><PflichtBar frage="Muss beim Erfassen einer Leistung ein BAS gewählt werden?" value={pf.bas} onChange={(v) => setListKey("pflicht", { ...pf, bas: v })} /><BasTable bas={lists.bas} onChange={(v) => setListKey("bas", v)} /></section>}
             </>
           )}
         </main>
@@ -1013,7 +1212,7 @@ export default function App() {
             <div className="space-y-3">
               <H>Leistung</H>
             <div className="space-y-4 rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
-              <Field label="Sektion"><Combo value={draft.sektion} onChange={(v) => setD("sektion", v)} options={sektOpts} /></Field>
+              <Field label={"Sektion" + (pf.sektion ? " *" : "")}><Combo value={draft.sektion} onChange={(v) => setD("sektion", v)} options={sektOpts} /></Field>
               {(() => { const si = sektInfo(draft.sektion); return si ? (
                 <div className="border-l-4 border-[#FAD200] bg-[#DAE1F0] p-3 text-sm">
                   <div className="flex flex-wrap gap-x-5 gap-y-1">
@@ -1039,7 +1238,7 @@ export default function App() {
                   </div>
                 </div>
                 <div>
-                  <Label>Vorhaben</Label>
+                  <Label>{"Vorhaben" + (pf.vorhaben ? " *" : "")}</Label>
                   <div className="flex gap-2">
                     {VORHABEN_OPTS.map((o) => (
                       <button key={o.value} onClick={() => setD("vorhaben", o.value)} className={`min-h-[46px] flex-1 rounded-sm border px-2 text-sm font-semibold transition ${draft.vorhaben === o.value ? "border-[#0F1E46] bg-[#DAE1F0] text-[#0F1E46]" : "border-[#C8D2E6] bg-white text-[#0F1E46]/70 hover:bg-[#DAE1F0]"}`}>{o.label}</button>
@@ -1051,11 +1250,11 @@ export default function App() {
                 <p className="mb-2 text-xs font-semibold text-[#0F1E46]">Vorhaben-Auswahl <span className="font-normal text-[#0F1E46]/70">· rechte Seite = OST = V4 · linke Seite = WEST = V3</span></p>
                 <img src={VORHABEN_IMG} alt="Vorhaben Querschnitt – Graben, Schutzstreifen, HGÜ 525 kV" className="w-full rounded-sm border border-[#C8D2E6] bg-white" />
               </div>
-              <Field label="Tätigkeit"><Combo value={draft.taetigkeit} onChange={(v) => setD("taetigkeit", v)} options={taetOpts} /></Field>
+              <Field label={"Tätigkeit" + (pf.taetigkeit ? " *" : "")}><Combo value={draft.taetigkeit} onChange={(v) => setD("taetigkeit", v)} options={taetOpts} /></Field>
               <Field label="Ausführung durch"><NuSelect value={draft.nachunternehmer || ""} names={nuNames} onChange={(v) => { setD("nachunternehmer", v); rememberNu(v); }} /></Field>
               <div>
                 <div className="mb-1 flex items-center justify-between">
-                  <Label hint="(Leistungs-/Kostenschlüssel)">BAS</Label>
+                  <Label hint="(Leistungs-/Kostenschlüssel)">{"BAS" + (pf.bas ? " *" : "")}</Label>
                   {draft.bas && <button onClick={() => setBasModal(draft.bas)} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0F1E46] underline"><Info size={13} /> Was ist enthalten?</button>}
                 </div>
                 <Combo value={draft.bas} onChange={(v) => setD("bas", v)} options={basOpts} />
@@ -1073,22 +1272,22 @@ export default function App() {
                   </div>
                 </div>
               ) : null; })()}
-              {!stepValid[0] && <p className="text-xs text-[#C62828]">Bitte Sektion, Vorhaben (oder „Vorhabenübergreifend: Ja"), Tätigkeit und BAS auswählen.</p>}
+              {missA.length > 0 && <p className="text-xs text-[#C62828]">Bitte auswählen: {missA.join(", ")}.</p>}
             </div>
               <H>Ausführung</H>
             <div className="space-y-4 rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
-              <Field label="Beschreibung (Detail)">
+              <Field label={"Beschreibung (Detail)" + (pf.beschreibung ? " *" : "")}>
                 <textarea rows={4} className={`${inputCls} min-h-[110px] py-2`} value={draft.beschreibung} onChange={(e) => setD("beschreibung", e.target.value)} placeholder="Was wurde konkret ausgeführt? Ort, Abschnitt, Besonderheiten, Behinderungen …" />
               </Field>
               <div className="grid max-w-sm grid-cols-2 gap-3">
-                <Field label="Menge"><input type="number" inputMode="decimal" className={inputCls} value={draft.menge} onChange={(e) => setD("menge", e.target.value)} placeholder="0" /></Field>
-                <Field label="Einheit"><Combo value={draft.einheit} onChange={(v) => setD("einheit", v)} options={EINHEITEN.map((u) => ({ value: u, label: u }))} placeholder="–" /></Field>
+                <Field label={"Menge" + (pf.menge ? " *" : "")}><input type="number" inputMode="decimal" className={inputCls} value={draft.menge} onChange={(e) => setD("menge", e.target.value)} placeholder="0" /></Field>
+                <Field label={"Einheit" + (pf.menge || mengeOk ? " *" : "")}><Combo value={draft.einheit} onChange={(v) => setD("einheit", v)} options={EINHEITEN.map((u) => ({ value: u, label: u }))} placeholder="–" /></Field>
               </div>
-              {!stepValid[1] && <p className="text-xs text-[#C62828]">Beschreibung, Menge (&gt; 0) und Einheit ausfüllen.</p>}
+              {missB.length > 0 && <p className="text-xs text-[#C62828]">Bitte ausfüllen: {missB.join(", ")}.</p>}
             </div>
             </div>
             <div className="space-y-3">
-              <H>Personal</H>
+              <H>{"Personal" + (pf.personal ? " *" : "")}</H>
             <div className="rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-sm text-[#0F1E46]/70">Wer hat an dieser Leistung gearbeitet?</p>
@@ -1108,9 +1307,9 @@ export default function App() {
                 ))}
               </div>
               <AddBtn onClick={() => addRow("personal", { rolle: "", anzahl: "", stunden: "" })}>Rolle hinzufügen</AddBtn>
-              {!stepValid[2] && <p className="mt-2 text-xs text-[#C62828]">Mindestens eine Person mit Rolle, Anzahl (&gt; 0) und Stunden (&gt; 0). Angefangene Zeilen bitte vervollständigen oder entfernen.</p>}
+              {(persIncomplete || (pf.personal && persComplete.length < 1)) && <p className="mt-2 text-xs text-[#C62828]">{persIncomplete ? "Angefangene Personal-Zeile: Rolle, Anzahl (> 0) und Stunden (> 0) ausfüllen oder Zeile entfernen." : "Mindestens eine Person mit Rolle, Anzahl (> 0) und Stunden (> 0) erfassen."}</p>}
             </div>
-              <H>Geräte</H>
+              <H>{"Geräte" + (pf.geraete ? " *" : "")}</H>
             <div className="rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-sm text-[#0F1E46]/70">Welche Geräte waren im Einsatz?</p>
@@ -1136,7 +1335,7 @@ export default function App() {
                 })}
               </div>
               <AddBtn onClick={() => addRow("geraete", { typ: "", geraet: "", anzahl: "1", stunden: "" })}>Gerät hinzufügen</AddBtn>
-              {gerIncomplete && <p className="mt-2 text-xs text-[#C62828]">Bei gewähltem Gerät: genaues Gerät (falls hinterlegt), Anzahl (&gt; 0) und Betriebsstunden (&gt; 0) ausfüllen – oder die Zeile entfernen. Geräte sind sonst optional.</p>}
+              {(gerIncomplete || (pf.geraete && gerComplete.length < 1)) && <p className="mt-2 text-xs text-[#C62828]">{gerIncomplete ? "Angefangene Geräte-Zeile: genaues Gerät (falls hinterlegt), Anzahl (> 0) und Betriebsstunden (> 0) ausfüllen oder Zeile entfernen." : "Mindestens ein Gerät mit Anzahl (> 0) und Betriebsstunden (> 0) erfassen."}</p>}
             </div>
             </div>
           </div>
@@ -1192,9 +1391,10 @@ export default function App() {
             <button onClick={() => exportExcel(d, ps, basName)} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-3 py-2 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><FileSpreadsheet size={16} /> Excel</button>
             <button onClick={() => exportXML(d, ps, basName)} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-3 py-2 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><FileCode2 size={16} /> XML</button>
             <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-3 py-2 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><Printer size={16} /> PDF</button>
-            <button onClick={() => offenP === 0 && shareReport(d, ps, basName, fotosOf(d))} disabled={offenP > 0} className={`inline-flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-bold ${offenP > 0 ? "cursor-not-allowed bg-[#B1BFD8] text-white" : "bg-[#FAD200] text-[#0F1E46] hover:bg-[#FCE466]"}`}><Share2 size={16} /> Senden</button>
+            <button onClick={async () => { if (offenP > 0) return; setSendMsg(""); const r = await shareReport(d, ps, basName, fotosOf(d)); setSendMsg(r === "eml" ? `E-Mail-Entwurf „${fileBase(d)}.eml“ wurde heruntergeladen. Datei öffnen – Outlook zeigt eine neue E-Mail mit PDF und XML im Anhang. Empfänger eintragen und senden.` : r === "download" ? "PDF und XML wurden heruntergeladen. Bitte an eine E-Mail anhängen." : ""); }} disabled={offenP > 0} className={`inline-flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-bold ${offenP > 0 ? "cursor-not-allowed bg-[#B1BFD8] text-white" : "bg-[#FAD200] text-[#0F1E46] hover:bg-[#FCE466]"}`}><Share2 size={16} /> Senden</button>
           </div>
           {offenP > 0 && <p className="mb-3 border-l-4 border-[#C62828] bg-white py-2 pl-3 text-sm font-bold text-[#C62828] print:hidden">{offenP} übernommene Leistung(en) sind noch nicht geprüft. Senden ist erst danach möglich.</p>}
+          {sendMsg && <p className="mb-3 border-l-4 border-[#FAD200] bg-[#DAE1F0] p-3 text-sm text-[#0F1E46] print:hidden">{sendMsg}</p>}
           <div className="rounded-sm border border-[#C8D2E6] bg-white p-6 sm:p-8 print:border-0 print:p-0">
             <div className="mb-5 flex flex-col gap-2 border-b-4 border-[#FAD200] pb-4 sm:flex-row sm:items-start sm:justify-between">
               <div><p className="text-[11px] font-bold tracking-wide text-[#0F1E46]">HABAU INFRA</p><h1 className="text-2xl font-black tracking-tight">BAUTAGESBERICHT</h1><p className="text-sm text-[#0F1E46]/70">{d.projekt || "—"}</p></div>
@@ -1208,10 +1408,10 @@ export default function App() {
             {ps.map((p, i) => (
               <div key={p.id} className="mb-4 break-inside-avoid rounded-sm border border-[#C8D2E6] p-4">
                 <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <span className="rounded-sm bg-[#0F1E46] px-2 py-0.5 tabular-nums text-xs font-bold text-[#FAD200]">{p.bas}</span>
-                  <b className="text-[#0F1E46]">{basName(p.bas)}</b>
-                  <span className="text-sm text-[#0F1E46]/70">{p.sektion}{p.vorhaben ? ` · ${p.vorhaben}` : ""}{p.vorhabenUeb === "Ja" ? " · übergr." : ""} · {p.taetigkeit}{p.nachunternehmer ? ` · NU: ${p.nachunternehmer}` : ""}</span>
-                  {num(p.menge) > 0 && <span className="ml-auto tabular-nums text-sm font-semibold text-[#0F1E46]">{fmt(num(p.menge))} {p.einheit}</span>}
+                  <span className="rounded-sm bg-[#0F1E46] px-2 py-0.5 tabular-nums text-xs font-bold text-[#FAD200]">{p.bas || "—"}</span>
+                  <b className="text-[#0F1E46]">{p.bas ? basName(p.bas) : "Ohne BAS"}</b>
+                  <span className="text-sm text-[#0F1E46]/70">{p.sektion || "—"}{p.vorhaben ? ` · ${p.vorhaben}` : ""}{p.vorhabenUeb === "Ja" ? " · übergr." : ""} · {p.taetigkeit || "—"}{p.nachunternehmer ? ` · NU: ${p.nachunternehmer}` : ""}</span>
+                  {num(p.menge) > 0 && <span className="ml-auto tabular-nums text-sm font-semibold text-[#0F1E46]">{fmt(num(p.menge))} {p.einheit || ""}</span>}
                 </div>
                 {p.beschreibung && <p className="mb-3 text-sm text-[#0F1E46]/70">{p.beschreibung}</p>}
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -1381,14 +1581,14 @@ export default function App() {
                 <tbody>
                   {positions.map((p) => (
                     <tr key={p.id} onClick={() => startEdit(p)} className={`cursor-pointer border-b border-[#C8D2E6] align-top hover:bg-[#DAE1F0]/40 ${p.pruefen ? "text-[#C62828]" : "text-[#0F1E46]"}`}>
-                      <td className={`px-2 py-2 ${p.pruefen ? "border-l-4 border-[#C62828]" : ""}`}><span className="rounded-sm bg-[#0F1E46] px-1.5 py-0.5 text-xs font-bold tabular-nums text-[#FAD200]">{p.bas}</span></td>
+                      <td className={`px-2 py-2 ${p.pruefen ? "border-l-4 border-[#C62828]" : ""}`}><span className="rounded-sm bg-[#0F1E46] px-1.5 py-0.5 text-xs font-bold tabular-nums text-[#FAD200]">{p.bas || "—"}</span></td>
                       <td className="px-2 py-2">
-                        <p className="break-words font-semibold">{basName(p.bas)}</p>
+                        <p className="break-words font-semibold">{p.bas ? basName(p.bas) : "Ohne BAS"}</p>
                         {p.pruefen && <p className="text-[11px] font-bold uppercase tracking-wider">Übernommen – bitte prüfen</p>}
-                        <p className={`text-xs ${p.pruefen ? "" : "text-[#0F1E46]/70"}`}>{p.sektion} · {p.vorhaben || "—"}{p.vorhabenUeb === "Ja" ? " · übergr." : ""} · {p.taetigkeit}</p>
-                        <p className="mt-0.5 text-xs text-[#0F1E46]/70"><span className="font-bold text-[#0F1E46] sm:hidden">{num(p.menge) ? `${fmt(num(p.menge))} ${p.einheit} · ` : ""}</span>{fmt(phOf(p))} Pers.-Std. · {fmt(ghOf(p))} Geräte-Std.</p>
+                        <p className={`text-xs ${p.pruefen ? "" : "text-[#0F1E46]/70"}`}>{p.sektion || "—"} · {p.vorhaben || "—"}{p.vorhabenUeb === "Ja" ? " · übergr." : ""} · {p.taetigkeit || "—"}</p>
+                        <p className="mt-0.5 text-xs text-[#0F1E46]/70"><span className="font-bold text-[#0F1E46] sm:hidden">{num(p.menge) ? `${fmt(num(p.menge))} ${p.einheit || ""} · ` : ""}</span>{fmt(phOf(p))} Pers.-Std. · {fmt(ghOf(p))} Geräte-Std.</p>
                       </td>
-                      <td className="hidden whitespace-nowrap px-2 py-2 text-right font-bold tabular-nums sm:table-cell">{num(p.menge) ? `${fmt(num(p.menge))} ${p.einheit}` : "—"}</td>
+                      <td className="hidden whitespace-nowrap px-2 py-2 text-right font-bold tabular-nums sm:table-cell">{num(p.menge) ? `${fmt(num(p.menge))} ${p.einheit || ""}` : "—"}</td>
                       <td className="px-2 py-1.5"><NuSelect compact value={p.nachunternehmer || ""} names={nuNames} onChange={(v) => setPositionNu(p.id, v)} /></td>
                       <td className="whitespace-nowrap px-1 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
                         {p.pruefen
@@ -1532,7 +1732,7 @@ export default function App() {
             <div className="space-y-2">
               {archive.filter((r) => r.positions.length > 0).map((r) => (
                 <div key={r.id} className="flex items-center gap-3 rounded-sm border border-[#C8D2E6] p-3">
-                  <div className="min-w-0 flex-1"><p className="font-semibold text-[#0F1E46]">{dateDE(r.day.datum)}</p><p className="text-xs text-[#0F1E46]/70">{r.positions.length} Leistung(en): {r.positions.map((p) => p.bas).join(", ")}</p></div>
+                  <div className="min-w-0 flex-1"><p className="font-semibold text-[#0F1E46]">{dateDE(r.day.datum)}</p><p className="text-xs text-[#0F1E46]/70">{r.positions.length} Leistung(en): {r.positions.map((p) => p.bas || "—").join(", ")}</p></div>
                   <button onClick={() => copyFrom(r)} className="shrink-0 rounded-sm bg-[#FAD200] px-3 py-2 text-sm font-bold text-[#0F1E46] hover:bg-[#FCE466]">Übernehmen</button>
                 </div>
               ))}
@@ -1580,83 +1780,6 @@ function DateBadge({ iso }) {
   const dt = new Date(iso);
   return (<div className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-sm bg-[#0F1E46] text-white"><span className="text-[10px] leading-none text-[#FAD200]">{dt.toLocaleDateString("de-DE", { month: "short" })}</span><span className="text-base font-bold leading-tight">{dt.getDate()}</span></div>);
 }
-function EditorCard({ icon: Icon, title, count, children }) {
-  return (
-    <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white">
-      <div className="flex items-center gap-3 border-b border-[#C8D2E6] px-4 py-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-[#0F1E46] text-[#FAD200]"><Icon size={18} /></div>
-        <h2 className="flex-1 text-[15px] font-bold text-[#0F1E46]">{title}</h2>
-        {count !== undefined && <span className="rounded-sm bg-[#DAE1F0] px-2 py-0.5 text-xs font-semibold text-[#0F1E46]/70">{count}</span>}
-      </div>
-      <div className="p-4 sm:p-5">{children}</div>
-    </section>
-  );
-}
-
-function BasEditor({ bas, onChange }) {
-  const [q, setQ] = useState("");
-  const ql = q.trim().toLowerCase();
-  const setRow = (i, patch) => onChange(bas.map((b, k) => (k === i ? { ...b, ...patch } : b)));
-  const del = (i) => onChange(bas.filter((_, k) => k !== i));
-  const add = () => onChange([{ code: "", name: "", group: "", desc: "", wann: "" }, ...bas]);
-  const visible = bas.map((b, i) => ({ b, i })).filter(({ b }) => !ql || `${b.code} ${b.name} ${b.group} ${b.desc} ${b.wann || ""}`.toLowerCase().includes(ql));
-  return (
-    <EditorCard icon={ListChecks} title="BAS (mit Inhalt)" count={bas.length}>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="flex min-w-[180px] flex-1 items-center gap-2 rounded-sm border border-[#C8D2E6] px-3"><Search size={15} className="text-[#677BA4]" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="BAS suchen…" className="min-h-[44px] w-full bg-transparent text-sm outline-none" /></div>
-        <button onClick={add} className="inline-flex items-center gap-1.5 rounded-sm border border-dashed border-[#96A8C7] px-3 py-2.5 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><Plus size={16} /> BAS</button>
-      </div>
-      <div className="space-y-3">
-        {visible.map(({ b, i }) => (
-          <div key={i} className="rounded-sm border border-[#C8D2E6] bg-[#DAE1F0]/40 p-3">
-            <div className="flex items-start gap-2">
-              <div className="grid flex-1 gap-2 sm:grid-cols-[110px_1fr]">
-                <input className={`${inputCls} tabular-nums`} value={b.code} placeholder="Code" onChange={(e) => setRow(i, { code: e.target.value })} />
-                <input className={inputCls} value={b.name} placeholder="Bezeichnung" onChange={(e) => setRow(i, { name: e.target.value })} />
-              </div>
-              <button onClick={() => del(i)} className="shrink-0 rounded-sm p-2 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]" aria-label="Löschen"><Trash2 size={16} /></button>
-            </div>
-            <div className="mt-2 grid gap-2 sm:grid-cols-[110px_1fr]">
-              <input className={inputCls} value={b.group || ""} placeholder="Gruppe" onChange={(e) => setRow(i, { group: e.target.value })} />
-              <textarea rows={2} className={`${inputCls} py-2`} value={b.desc || ""} placeholder="Was steckt drin (Inhalt)…" onChange={(e) => setRow(i, { desc: e.target.value })} />
-            </div>
-            <div className="mt-2 sm:pl-[118px]">
-              <textarea rows={2} className={`${inputCls} py-2`} value={b.wann || ""} placeholder="Wann dieses BAS wählen / wofür…" onChange={(e) => setRow(i, { wann: e.target.value })} />
-            </div>
-          </div>
-        ))}
-        {visible.length === 0 && <p className="py-2 text-sm text-[#677BA4]">Keine Treffer.</p>}
-      </div>
-    </EditorCard>
-  );
-}
-
-function GeraeteEditor({ geraete, onChange }) {
-  const setType = (i, typ) => onChange(geraete.map((g, k) => (k === i ? { ...g, typ } : g)));
-  const setUnits = (i, units) => onChange(geraete.map((g, k) => (k === i ? { ...g, units } : g)));
-  const delType = (i) => onChange(geraete.filter((_, k) => k !== i));
-  const addType = () => onChange([...geraete, { typ: "", units: [] }]);
-  return (
-    <EditorCard icon={Truck} title="Geräte (Typ → genaue Geräte)" count={geraete.length}>
-      <div className="space-y-3">
-        {geraete.map((g, i) => (
-          <div key={i} className="rounded-sm border border-[#C8D2E6] bg-[#DAE1F0]/40 p-3">
-            <div className="flex items-center gap-2">
-              <input className={`${inputCls} font-medium`} value={g.typ} placeholder="Gerätetyp (z. B. Kettenbagger)" onChange={(e) => setType(i, e.target.value)} />
-              <button onClick={() => delType(i)} className="shrink-0 rounded-sm p-2 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]" aria-label="Typ löschen"><Trash2 size={16} /></button>
-            </div>
-            <div className="mt-2 border-l-2 border-[#C8D2E6] pl-3">
-              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#677BA4]">Genaue Geräte</p>
-              <StringListEditor items={g.units} onChange={(u) => setUnits(i, u)} placeholder="z. B. CAT 320 / Inv.-Nr. 4711" />
-            </div>
-          </div>
-        ))}
-      </div>
-      <AddBtn onClick={addType}>Gerätetyp hinzufügen</AddBtn>
-    </EditorCard>
-  );
-}
-
 function BasModal({ meta, code, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#0F1E46]/50 p-0 sm:items-center sm:p-4" onClick={onClose}>
