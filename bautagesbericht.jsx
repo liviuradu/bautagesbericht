@@ -4,7 +4,7 @@ import {
   Printer, Sun, Cloud, CloudRain, Snowflake, CloudSun, Users, Truck, Search,
   ClipboardList, Gauge, CheckCircle2, X, Layers, Copy, Archive, FolderOpen, Pencil,
   Info, Wand2, FileSpreadsheet, FileCode2, Share2, Settings, ListChecks, RotateCcw,
-  LogIn, LogOut, Lock, ShieldCheck, Cloud as CloudIcon, Clock,
+  LogIn, LogOut, Lock, ShieldCheck, Cloud as CloudIcon, Clock, Camera, Upload, Download,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -173,6 +173,7 @@ const BAS_LV = Object.fromEntries(Object.entries(BAS_EXTRA).filter(([, v]) => v.
 
 const defaultLists = () => ({
   sektionen: [...DEF_SEKTIONEN], taetigkeiten: [...DEF_TAETIGKEITEN], rollen: [...DEF_ROLLEN],
+  nachunternehmer: [],
   bas: DEF_BAS.map((b) => ({ ...b })), geraete: DEF_GERAETE.map((g) => ({ typ: g.typ, units: [...g.units] })),
 });
 
@@ -225,6 +226,49 @@ const phOf = (p) => p.personal.reduce((a, x) => a + num(x.anzahl) * num(x.stunde
 const ghOf = (p) => p.geraete.reduce((a, x) => a + (num(x.anzahl) || 1) * num(x.stunden), 0);
 const geraetLabel = (g) => `${g.typ}${g.geraet ? ` – ${g.geraet}` : ""}`;
 
+/* ===================== Stillstand-/Foto-Helfer ===================== */
+const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ""); return m ? +m[1] * 60 + +m[2] : null; };
+const spanH = (a, b) => { const x = toMin(a), y = toMin(b); return x !== null && y !== null && y > x ? (y - x) / 60 : 0; };
+const stillPers = (s) => (s.personal || []).filter((r) => r.rolle).map((r) => `${num(r.anzahl) || 1}× ${r.rolle}`).join(", ");
+const stillGer = (s) => (s.geraete || []).filter((r) => r.typ).map((r) => `${num(r.anzahl) || 1}× ${geraetLabel(r)}`).join(", ");
+function fileToJpeg(file, max = 1600, q = 0.75) {
+  return new Promise((res, rej) => {
+    const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); res(c.toDataURL("image/jpeg", q));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("Bild nicht lesbar")); };
+    img.src = url;
+  });
+}
+
+/* ===================== Listen <-> Excel ===================== */
+const LIST_SHEETS = [["sektionen", "Sektionen", "Sektion"], ["taetigkeiten", "Tätigkeiten", "Tätigkeit"], ["rollen", "Rollen", "Rolle"], ["nachunternehmer", "Nachunternehmer", "Nachunternehmer"]];
+function listsToWorkbook(l) {
+  const wb = XLSX.utils.book_new();
+  LIST_SHEETS.forEach(([key, sheet, head]) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[head], ...(l[key] || []).filter(Boolean).map((x) => [x])]), sheet));
+  const g = [["Gerätetyp", "Gerät (genau)"]];
+  (l.geraete || []).filter((x) => x.typ).forEach((x) => { const u = (x.units || []).filter(Boolean); if (u.length === 0) g.push([x.typ, ""]); else u.forEach((n) => g.push([x.typ, n])); });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(g), "Geräte");
+  const b = [["Code", "Bezeichnung", "Gruppe", "Was steckt drin", "Wann wählen"], ...(l.bas || []).filter((x) => x.code).map((x) => [String(x.code), x.name || "", x.group || "", x.desc || "", x.wann || ""])];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(b), "BAS");
+  return wb;
+}
+function workbookToLists(wb, cur) {
+  const out = { ...cur }; const found = [];
+  const rows = (name) => { const ws = wb.Sheets[name]; return ws ? XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }).slice(1) : null; };
+  const str = (v) => String(v ?? "").trim();
+  LIST_SHEETS.forEach(([key, sheet]) => { const r = rows(sheet); if (r) { out[key] = r.map((x) => str(x[0])).filter(Boolean); found.push(sheet); } });
+  const g = rows("Geräte");
+  if (g) { const m = new Map(); g.forEach((x) => { const t = str(x[0]); if (!t) return; if (!m.has(t)) m.set(t, []); const u = str(x[1]); if (u) m.get(t).push(u); }); out.geraete = [...m.entries()].map(([typ, units]) => ({ typ, units })); found.push("Geräte"); }
+  const b = rows("BAS");
+  if (b) { out.bas = b.map((x) => ({ code: str(x[0]), name: str(x[1]), group: str(x[2]), desc: str(x[3]), wann: str(x[4]) })).filter((x) => x.code); found.push("BAS"); }
+  return { lists: out, found };
+}
+
+
 /* ===================== EXPORT (XML / Excel / PDF / Senden) ===================== */
 const xmlEsc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const fileBase = (day) => `Bautagesbericht_${(day.projekt || "Projekt").replace(/[^\wÄÖÜäöüß-]+/g, "_")}_${day.datum}`;
@@ -247,7 +291,7 @@ function buildXML(day, positions, kurz) {
       `      <menge einheit="${xmlEsc(p.einheit)}">${num(p.menge)}</menge>`,
       `      <personenstunden>${phOf(p)}</personenstunden>`, `      <geraetestunden>${ghOf(p)}</geraetestunden>`, "      <personal>");
     p.personal.filter((x) => x.rolle).forEach((x) =>
-      L.push(`        <person rolle="${xmlEsc(x.rolle)}" anzahl="${num(x.anzahl)}" stunden="${num(x.stunden)}"/>`));
+      L.push(`        <person rolle="${xmlEsc(x.rolle)}" name="${xmlEsc(x.name)}" anzahl="${num(x.anzahl)}" stunden="${num(x.stunden)}"/>`));
     L.push("      </personal>", "      <geraete>");
     p.geraete.filter((x) => x.typ).forEach((x) =>
       L.push(`        <geraet typ="${xmlEsc(x.typ)}" bezeichnung="${xmlEsc(x.geraet)}" anzahl="${num(x.anzahl)}" stunden="${num(x.stunden)}"/>`));
@@ -256,12 +300,15 @@ function buildXML(day, positions, kurz) {
   L.push("  </positionen>");
   const still = (day.stillstand || []).filter((s) => s.start || s.ende || s.grund || s.sektion);
   L.push("  <stillstandszeiten>");
-  still.forEach((s) => L.push(`    <stillstand sektion="${xmlEsc(s.sektion)}" vorhaben="${xmlEsc(s.vorhaben)}" start="${xmlEsc(s.start)}" ende="${xmlEsc(s.ende)}">${xmlEsc(s.grund)}</stillstand>`));
+  still.forEach((s) => L.push(`    <stillstand sektion="${xmlEsc(s.sektion)}" vorhaben="${xmlEsc(s.vorhaben)}" start="${xmlEsc(s.start)}" ende="${xmlEsc(s.ende)}" stunden="${spanH(s.start, s.ende)}" personal="${xmlEsc(stillPers(s))}" geraete="${xmlEsc(stillGer(s))}">${xmlEsc(s.grund)}</stillstand>`));
   L.push("  </stillstandszeiten>");
   const vork = (day.vorkommnisse || []).filter((v) => (v.text || "").trim());
   L.push("  <vorkommnisse>");
   vork.forEach((v) => L.push(`    <eintrag>${xmlEsc(v.text)}</eintrag>`));
   L.push("  </vorkommnisse>");
+  L.push("  <fotos>");
+  (day.fotos || []).forEach((f) => L.push(`    <foto datei="${xmlEsc(f.name)}" bereich="${f.stillId ? "Stillstand" : "Allgemein"}">${xmlEsc(f.text)}</foto>`));
+  L.push("  </fotos>");
   L.push("</bautagesbericht>");
   return L.join("\n");
 }
@@ -276,7 +323,7 @@ function buildWorkbook(day, positions, kurz) {
   }));
   const persRows = [];
   positions.forEach((p, i) => p.personal.filter((x) => x.rolle).forEach((x) => persRows.push({
-    Pos: i + 1, BAS: p.bas, Rolle: x.rolle, Anzahl: num(x.anzahl), "Stunden/Person": num(x.stunden), Personenstunden: num(x.anzahl) * num(x.stunden),
+    Pos: i + 1, BAS: p.bas, Rolle: x.rolle, Name: x.name || "", Anzahl: num(x.anzahl), "Stunden/Person": num(x.stunden), Personenstunden: num(x.anzahl) * num(x.stunden),
   })));
   const gerRows = [];
   positions.forEach((p, i) => p.geraete.filter((x) => x.typ).forEach((x) => gerRows.push({
@@ -287,11 +334,13 @@ function buildWorkbook(day, positions, kurz) {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(persRows.length ? persRows : [{ Pos: "" }]), "Personal");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(gerRows.length ? gerRows : [{ Pos: "" }]), "Geräte");
   const stillRows = (day.stillstand || []).filter((s) => s.start || s.ende || s.grund || s.sektion).map((s, i) => ({
-    Nr: i + 1, Sektion: s.sektion, Vorhaben: s.vorhaben, Startzeit: s.start, Endzeit: s.ende, Begründung: s.grund,
+    Nr: i + 1, Sektion: s.sektion, Vorhaben: s.vorhaben, Startzeit: s.start, Endzeit: s.ende, Stunden: spanH(s.start, s.ende), Begründung: s.grund, Personal: stillPers(s), Geräte: stillGer(s),
   }));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(stillRows.length ? stillRows : [{ Nr: "" }]), "Stillstand");
   const vorkRows = (day.vorkommnisse || []).filter((v) => (v.text || "").trim()).map((v, i) => ({ Nr: i + 1, Vorkommnis: v.text }));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(vorkRows.length ? vorkRows : [{ Nr: "" }]), "Vorkommnisse");
+  const fotoRows = (day.fotos || []).map((f, i) => ({ Nr: i + 1, Bereich: f.stillId ? "Stillstand" : "Allgemein", Datei: f.name, Beschreibung: f.text }));
+  if (fotoRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fotoRows), "Fotos");
   return wb;
 }
 
@@ -310,7 +359,7 @@ const exportExcel = (day, positions, kurz) => {
     downloadBlob(new Blob([out], { type: "application/octet-stream" }), fileBase(day) + ".xlsx");
   }
 };
-async function buildPdfBlob(day, positions, kurz) {
+async function buildPdfBlob(day, positions, kurz, fotos) {
   const { jsPDF } = await import("jspdf");
   const autoTable = (await import("jspdf-autotable")).default;
   const doc = new jsPDF({ unit: "pt", format: "a4" });
@@ -319,7 +368,7 @@ async function buildPdfBlob(day, positions, kurz) {
   const H = doc.internal.pageSize.getHeight();
   const M = 40;
   let y = 46;
-  doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.text("HABAU INFRA", M, y); y += 12;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.text("HABAU INFRA", M, y); y += 18;
   doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.text("BAUTAGESBERICHT", M, y);
   doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.text(String(day.projekt || ""), M, y + 15);
   doc.setFont("helvetica", "bold"); doc.text(dateDE(day.datum), W - M, y, { align: "right" });
@@ -350,7 +399,7 @@ async function buildPdfBlob(day, positions, kurz) {
   y = doc.lastAutoTable.finalY + 10;
 
   positions.forEach((p, i) => {
-    const persRows = p.personal.filter((x) => x.rolle).map((x) => [x.rolle, String(x.anzahl || ""), String(x.stunden || "")]);
+    const persRows = p.personal.filter((x) => x.rolle).map((x) => [x.rolle + (x.name ? " – " + x.name : ""), String(x.anzahl || ""), String(x.stunden || "")]);
     const gerRows = p.geraete.filter((x) => x.typ).map((x) => [geraetLabel(x), String(x.anzahl || ""), String(x.stunden || "")]);
     if (!persRows.length && !gerRows.length) return;
     if (y > H - 90) { doc.addPage(); y = 46; }
@@ -371,8 +420,8 @@ async function buildPdfBlob(day, positions, kurz) {
     if (y > H - 90) { doc.addPage(); y = 46; }
     doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text("Stillstandszeiten", M, y); y += 4;
     autoTable(doc, {
-      startY: y, head: [["Nr", "Sektion", "Vorhaben", "Start", "Ende", "Begründung"]],
-      body: still.map((s, i) => [i + 1, s.sektion, s.vorhaben, s.start, s.ende, s.grund]),
+      startY: y, head: [["Nr", "Sektion", "Vorhaben", "Start", "Ende", "Begründung", "Personal / Geräte"]],
+      body: still.map((s, i) => [i + 1, s.sektion, s.vorhaben, s.start, s.ende, s.grund, [stillPers(s), stillGer(s)].filter(Boolean).join("\n")]),
       styles: { fontSize: 8, cellPadding: 3, overflow: "linebreak" }, headStyles: { fillColor: [15, 30, 70], textColor: 255 }, margin: { left: M, right: M },
     });
     y = doc.lastAutoTable.finalY + 10;
@@ -388,6 +437,25 @@ async function buildPdfBlob(day, positions, kurz) {
       doc.text(lines, M, y); y += lines.length * 12 + 3;
     });
   }
+  const drawFotos = (title, list) => {
+    if (!list.length) return;
+    doc.addPage(); y = 46;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text(title, M, y); y += 14;
+    const cw = (W - 2 * M - 12) / 2; let col = 0; let rowH = 0;
+    list.forEach((f, i) => {
+      let ih = 150;
+      try { const pr = doc.getImageProperties(f.data); ih = Math.min(220, cw * pr.height / pr.width); } catch (e) {}
+      if (col === 0 && y + ih + 24 > H - 30) { doc.addPage(); y = 46; }
+      const x = M + col * (cw + 12);
+      try { doc.addImage(f.data, "JPEG", x, y, cw, ih); } catch (e) {}
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+      doc.text(doc.splitTextToSize(`${f.still ? "Stillstand " + f.still + ": " : (i + 1) + ". "}${f.text || f.name || ""}`, cw), x, y + ih + 10);
+      rowH = Math.max(rowH, ih + 26);
+      if (col === 1) { y += rowH; rowH = 0; col = 0; } else col = 1;
+    });
+  };
+  drawFotos("Fotos zu Stillstandszeiten", (fotos || []).filter((f) => f.still));
+  drawFotos("Fotos", (fotos || []).filter((f) => !f.still));
   return doc.output("blob");
 }
 
@@ -397,12 +465,12 @@ async function saveWithPicker(file) {
   const ws = await handle.createWritable(); await ws.write(file); await ws.close();
 }
 
-async function shareReport(day, positions, kurz) {
+async function shareReport(day, positions, kurz, fotos) {
   const base = fileBase(day);
   const xlsxOut = XLSX.write(buildWorkbook(day, positions, kurz), { bookType: "xlsx", type: "array" });
   const xlsxFile = new File([xlsxOut], base + ".xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   let pdfFile = null;
-  try { const pdf = await buildPdfBlob(day, positions, kurz); pdfFile = new File([pdf], base + ".pdf", { type: "application/pdf" }); } catch (e) { /* PDF nicht möglich -> nur Excel */ }
+  try { const pdf = await buildPdfBlob(day, positions, kurz, fotos); pdfFile = new File([pdf], base + ".pdf", { type: "application/pdf" }); } catch (e) { /* PDF nicht möglich -> nur Excel */ }
   const files = pdfFile ? [pdfFile, xlsxFile] : [xlsxFile];
 
   // 1) Handy: natives Teilen-Menü – Mail-App wählen, beide Dateien angehängt
@@ -420,7 +488,7 @@ async function shareReport(day, positions, kurz) {
   downloadBlob(xlsxFile, xlsxFile.name);
 }
 
-const emptyDay = () => ({ datum: today(), projekt: "SuedLink Los 3", bauleiter: "", gewerk: "", arbeitStart: "", arbeitEnde: "", wetter: "heiter", tempMin: "", tempMax: "", stillstand: [], vorkommnisse: [] });
+const emptyDay = () => ({ datum: today(), projekt: "SuedLink Los 3", bauleiter: "", gewerk: "", arbeitStart: "", arbeitEnde: "", wetter: "heiter", tempMin: "", tempMax: "", stillstand: [], vorkommnisse: [], fotos: [] });
 const emptyDraft = () => ({
   id: uid(), sektion: "", vorhabenUeb: "Nein", vorhaben: "", taetigkeit: "", nachunternehmer: "", bas: "", beschreibung: "", menge: "", einheit: "",
   personal: [{ id: uid(), rolle: "", anzahl: "", stunden: "" }],
@@ -486,7 +554,7 @@ const Field = ({ label, hint, children }) => (<div><Label hint={hint}>{label}</L
 function TopBar({ title, subtitle, left, right }) {
   return (
     <header className="sticky top-0 z-10 border-b-4 border-[#FAD200] bg-[#0F1E46] text-white print:hidden">
-      <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
+      <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
         {left}
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-bold leading-none tracking-wide text-white">HABAU INFRA</p>
@@ -511,7 +579,7 @@ const RowShell = ({ index, onRemove, children }) => (
   </div>
 );
 const AddBtn = ({ onClick, children }) => (
-  <button onClick={onClick} className="mt-3 inline-flex items-center gap-2 rounded-sm border border-dashed border-[#96A8C7] px-3 py-2 text-sm font-semibold text-[#0F1E46] transition hover:bg-[#DAE1F0]"><Plus size={16} /> {children}</button>
+  <button onClick={onClick} className="mt-3 inline-flex items-center gap-2 rounded-sm bg-[#FAD200] px-3 py-2 text-sm font-bold text-[#0F1E46] transition hover:bg-[#FCE466]"><Plus size={16} /> {children}</button>
 );
 
 /* Einfacher Editor für eine Liste aus Texten */
@@ -533,24 +601,130 @@ function StringListEditor({ items, onChange, placeholder }) {
 }
 
 /* ===================== APP ===================== */
+
+/* Auswahl "Ausführung durch": Eigenleistung oder Nachunternehmer (bestehend oder neu) */
+function NuSelect({ value, names, onChange, compact }) {
+  const [open, setOpen] = useState(false);
+  const [neu, setNeu] = useState("");
+  const pick = (v) => { onChange(v); setOpen(false); setNeu(""); };
+  const item = "flex w-full items-center px-3 py-2 text-left text-sm hover:bg-[#DAE1F0]";
+  return (
+    <div className="relative" onClick={(e) => e.stopPropagation()}>
+      <button type="button" onClick={() => setOpen((v) => !v)} className={`flex w-full items-center justify-between gap-1 rounded-sm border border-[#C8D2E6] bg-white text-left text-[#0F1E46] ${compact ? "min-h-[38px] px-2 text-sm" : "min-h-[46px] px-3 text-[15px]"}`}>
+        <span className="min-w-0">
+          <span className="block truncate">{value || "Eigenleistung"}</span>
+          {value && compact && <span className="block text-[10px] uppercase tracking-wider text-[#677BA4]">Nachunternehmer</span>}
+        </span>
+        <ChevronDown size={15} className="shrink-0 text-[#677BA4]" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 z-30 mt-1 w-64 max-w-[85vw] rounded-sm border border-[#C8D2E6] bg-white">
+            <button type="button" onClick={() => pick("")} className={`${item} ${!value ? "bg-[#DAE1F0] font-semibold" : ""} text-[#0F1E46]`}>Eigenleistung</button>
+            <div className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-[#677BA4]">Nachunternehmer</div>
+            <div className="max-h-48 overflow-auto">
+              {names.length === 0 && <p className="px-3 pb-2 text-xs text-[#677BA4]">Noch keiner hinterlegt.</p>}
+              {names.map((n) => (<button type="button" key={n} onClick={() => pick(n)} className={`${item} ${value === n ? "bg-[#DAE1F0] font-semibold" : ""} text-[#0F1E46]`}>{n}</button>))}
+            </div>
+            <div className="flex gap-1 border-t border-[#C8D2E6] p-2">
+              <input value={neu} onChange={(e) => setNeu(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && neu.trim()) pick(neu.trim()); }} placeholder="Neuer Nachunternehmer …" className="min-h-[38px] w-full rounded-sm border border-[#C8D2E6] px-2 text-sm text-[#0F1E46] outline-none focus:border-[#0F1E46]" />
+              <button type="button" onClick={() => neu.trim() && pick(neu.trim())} className="shrink-0 rounded-sm bg-[#0F1E46] px-3 text-sm font-bold text-white">OK</button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* Tabelle: Stunden je Kategorie (Gerätetyp/Rolle), aufklappbar auf einzelne Geräte bzw. Namen */
+function HoursTable({ title, icon: Icon, first, rows, unit, dayH }) {
+  const [open, setOpen] = useState({});
+  const sum = rows.reduce((t, r) => t + r.hours, 0);
+  return (
+    <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4">
+      <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-[#0F1E46]"><Icon size={16} /> {title} <span className="text-[#677BA4]">({rows.length})</span></h2>
+      {rows.length === 0 ? <p className="text-sm text-[#0F1E46]/70">Noch nichts erfasst.</p> : (
+        <table className="w-full table-fixed border-collapse text-sm">
+          <thead><tr className="bg-[#0F1E46] text-left text-[11px] font-bold uppercase tracking-wider text-white">
+            <th className="px-2 py-1">{first}</th><th className="w-12 px-2 py-1 text-right">Anz.</th><th className="w-14 px-2 py-1 text-right">Std.</th><th className="w-[34%] px-2 py-1">Vom Arbeitstag</th>
+          </tr></thead>
+          <tbody>
+            {rows.map((r) => { const avail = r.count * dayH; const pct = avail > 0 ? r.hours / avail : 0; const isOpen = !!open[r.label]; return (
+              <Fragment key={r.label}>
+                <tr onClick={() => setOpen((o) => ({ ...o, [r.label]: !o[r.label] }))} className="cursor-pointer border-b border-[#C8D2E6] align-top text-[#0F1E46] hover:bg-[#DAE1F0]/40" aria-expanded={isOpen}>
+                  <td className="break-words px-2 py-1.5 font-semibold">{isOpen ? <ChevronDown size={14} className="mr-1 inline" /> : <ChevronRight size={14} className="mr-1 inline" />}{r.label}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.count)}</td>
+                  <td className="px-2 py-1.5 text-right font-bold tabular-nums">{fmt(r.hours)}</td>
+                  <td className="px-2 py-1.5">
+                    {avail > 0 ? (<>
+                      <div className="h-2 w-full bg-[#C8D2E6]"><div className={`h-2 ${pct > 1 ? "bg-[#C62828]" : "bg-[#0F1E46]"}`} style={{ width: `${Math.min(pct, 1) * 100}%` }} /></div>
+                      <p className={`mt-0.5 text-[11px] tabular-nums ${pct > 1 ? "font-bold text-[#C62828]" : "text-[#0F1E46]/70"}`}>{fmt(r.hours)} von {fmt(avail)} Std. · {Math.round(pct * 100)} %</p>
+                    </>) : <span className="text-[11px] text-[#677BA4]">—</span>}
+                  </td>
+                </tr>
+                {isOpen && r.details.map((d) => (
+                  <tr key={d.label} className="border-b border-[#C8D2E6] bg-[#DAE1F0]/40 align-top text-[#0F1E46]">
+                    <td className="break-words py-1 pl-7 pr-2 text-[13px]">{d.label}</td>
+                    <td className="px-2 py-1 text-right text-[13px] tabular-nums">{fmt(d.count)}</td>
+                    <td className="px-2 py-1 text-right text-[13px] tabular-nums">{fmt(d.hours)}</td>
+                    <td className="px-2 py-1 text-[11px] text-[#0F1E46]/70">{d.wo}</td>
+                  </tr>
+                ))}
+              </Fragment>
+            ); })}
+            <tr className="font-bold text-[#0F1E46]"><td className="border-t-2 border-[#0F1E46] px-2 py-1.5">Summe</td><td className="border-t-2 border-[#0F1E46]" /><td className="border-t-2 border-[#0F1E46] px-2 py-1.5 text-right tabular-nums">{fmt(sum)}</td><td className="border-t-2 border-[#0F1E46] px-2 py-1.5 text-[11px] font-normal">{unit}</td></tr>
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+/* Liste als Text: ein Eintrag pro Zeile */
+function LinesEditor({ items, onChange, placeholder }) {
+  return (
+    <div>
+      <textarea rows={Math.min(22, Math.max(8, items.length + 2))} className={`${inputCls} py-2 leading-7`} value={items.join("\n")} onChange={(e) => onChange(e.target.value.split("\n"))} placeholder={placeholder} spellCheck={false} />
+      <p className="mt-1 text-xs text-[#677BA4]">Ein Eintrag pro Zeile · {items.filter((x) => x.trim()).length} Einträge</p>
+    </div>
+  );
+}
+/* Geräte als Text: "Gerätetyp: Gerät 1; Gerät 2" */
+function GeraeteLines({ geraete, onChange }) {
+  const toText = (g) => g.filter((x) => x.typ).map((x) => `${x.typ}: ${(x.units || []).filter(Boolean).join("; ")}`).join("\n");
+  const [text, setText] = useState(() => toText(geraete));
+  const parse = (t) => t.split("\n").map((line) => { const i = line.indexOf(":"); const typ = (i < 0 ? line : line.slice(0, i)).trim(); const units = i < 0 ? [] : line.slice(i + 1).split(";").map((u) => u.trim()).filter(Boolean); return { typ, units }; }).filter((x) => x.typ);
+  return (
+    <div>
+      <textarea rows={Math.min(22, Math.max(8, text.split("\n").length + 2))} className={`${inputCls} py-2 leading-7`} value={text} onChange={(e) => { setText(e.target.value); onChange(parse(e.target.value)); }} placeholder={"Kettenbagger: CAT 320; Liebherr R 926\nRadlader: Volvo L90"} spellCheck={false} />
+      <p className="mt-1 text-xs text-[#677BA4]">Eine Zeile je Gerätetyp. Nach dem Doppelpunkt die genauen Geräte, getrennt mit Strichpunkt.</p>
+    </div>
+  );
+}
+
 export default function App() {
   const [lists, setLists] = useState(defaultLists());
   const [day, setDay] = useState(emptyDay());
   const [positions, setPositions] = useState([]);
   const [archive, setArchive] = useState([]);
-  const [view, setView] = useState("home"); // home | overview | wizard | preview | archive | settings
-  const [onePage, setOnePage] = useState(false); // Leistung auf einer Seite statt in 5 Schritten
-  const [returnTo, setReturnTo] = useState("home"); // wohin nach Speichern/Abbrechen im Wizard
-  const [step, setStep] = useState(0);
+  const [view, setView] = useState("home"); // home | wizard (Leistung bearbeiten) | preview | archive | settings
   const [draft, setDraft] = useState(emptyDraft());
   const [editingId, setEditingId] = useState(null);
   const [previewData, setPreviewData] = useState(null);
   const [basModal, setBasModal] = useState(null); // BAS-Code für Info-Fenster
   const [session, setSession] = useState(null); // {token, email} – nur Admins
   const [listsErr, setListsErr] = useState(""); // Hinweis bei Speicher-/Ladeproblemen
+  const [fotoData, setFotoData] = useState({}); // id -> Bild (Data-URL), getrennt vom Bericht gespeichert
+  const [localEdit, setLocalEdit] = useState(false); // Listen ohne Anmeldung, nur auf diesem Gerät
+  const [listsTab, setListsTab] = useState("sektionen");
+  const [listsMsg, setListsMsg] = useState("");
+  const [copyOpen, setCopyOpen] = useState(false); // Dialog: Leistungen aus früherem Tag übernehmen
 
   useEffect(() => {
     (async () => {
+      let localOnly = false; // Listen nur auf diesem Gerät: gemeinsame Listen nicht darüberladen
       try {
         if (typeof window !== "undefined" && window.storage) {
           const r = await window.storage.get("btb_v2");
@@ -559,9 +733,11 @@ export default function App() {
           if (s?.value) setSession(JSON.parse(s.value));
           const l = await window.storage.get("btb_lists_v2");
           if (l?.value) setLists({ ...defaultLists(), ...JSON.parse(l.value) }); // lokaler Cache zuerst
+          const lf = await window.storage.get("btb_lists_local");
+          if (lf?.value) { localOnly = true; setLocalEdit(true); }
         }
       } catch (e) {}
-      if (SB_ON) {
+      if (SB_ON && !localOnly) {
         try { const d = await sbLoadLists(); if (d) setLists({ ...defaultLists(), ...d }); } // gemeinsame Listen
         catch (e) { /* offline/blockiert -> lokaler Cache bleibt */ }
       }
@@ -591,6 +767,66 @@ export default function App() {
   const resetLists = () => { const n = defaultLists(); setLists(n); persistLists(n); if (SB_ON && session) sbSaveLists(n, session.token).catch((e) => setListsErr(e.message)); };
   const doLogout = () => { setSession(null); persistSession(null); };
 
+  /* --- Listen komplett setzen (Excel-Import, Zurücksetzen) --- */
+  const applyLists = (n) => { setLists(n); persistLists(n); if (SB_ON && session) sbSaveLists(n, session.token).catch((e) => setListsErr(e.message)); };
+  const enableLocalEdit = async () => { setLocalEdit(true); try { if (window.storage) await window.storage.set("btb_lists_local", "1"); } catch (e) {} };
+  const disableLocalEdit = async () => {
+    setLocalEdit(false); try { if (window.storage) await window.storage.delete("btb_lists_local"); } catch (e) {}
+    if (SB_ON) { try { const d = await sbLoadLists(); const n = { ...defaultLists(), ...(d || {}) }; setLists(n); persistLists(n); } catch (e) { setListsErr("Gemeinsame Listen konnten nicht geladen werden."); } }
+  };
+  const exportLists = () => {
+    const wb = listsToWorkbook(lists);
+    try { XLSX.writeFile(wb, "Bautagesbericht_Listen.xlsx"); }
+    catch (e) { downloadBlob(new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })], { type: "application/octet-stream" }), "Bautagesbericht_Listen.xlsx"); }
+  };
+  const importLists = async (file) => {
+    if (!file) return;
+    try {
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const { lists: n, found } = workbookToLists(wb, lists);
+      if (found.length === 0) { setListsMsg("In der Datei wurde kein passendes Tabellenblatt gefunden."); return; }
+      applyLists(n); setListsMsg("Übernommen: " + found.join(", "));
+    } catch (e) { setListsMsg("Datei konnte nicht gelesen werden."); }
+  };
+
+  /* --- Nachunternehmer --- */
+  const nuNames = useMemo(() => [...new Set([...(lists.nachunternehmer || []), ...positions.map((p) => p.nachunternehmer)].map((x) => (x || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [lists.nachunternehmer, positions]);
+  const rememberNu = (name) => { const n = (name || "").trim(); if (n && !(lists.nachunternehmer || []).some((x) => x.trim() === n)) setListKey("nachunternehmer", [...(lists.nachunternehmer || []).filter((x) => x.trim()), n]); };
+  const setPositionNu = (id, name) => { const list = positions.map((p) => p.id === id ? { ...p, nachunternehmer: name } : p); setPositions(list); persist({ positions: list }); rememberNu(name); };
+
+  /* --- Fotos --- */
+  useEffect(() => {
+    const want = [...(day.fotos || []), ...((previewData && previewData.day && previewData.day.fotos) || [])].filter((f) => !(f.id in fotoData));
+    if (want.length === 0 || typeof window === "undefined" || !window.storage) return;
+    (async () => {
+      const add = {};
+      for (const f of want) { try { const r = await window.storage.get("btb_foto_" + f.id); add[f.id] = (r && r.value) || ""; } catch (e) { add[f.id] = ""; } }
+      setFotoData((d) => ({ ...d, ...add }));
+    })();
+  }, [day.fotos, previewData]);
+  const addFotos = async (files, stillId) => {
+    const neu = []; const data = {};
+    for (const file of Array.from(files || [])) {
+      try { const url = await fileToJpeg(file); const id = uid(); data[id] = url; neu.push({ id, name: file.name, text: "", ...(stillId ? { stillId } : {}) }); try { if (window.storage) await window.storage.set("btb_foto_" + id, url); } catch (e) {} } catch (e) {}
+    }
+    if (neu.length === 0) return;
+    setFotoData((d) => ({ ...d, ...data }));
+    const n = { ...day, fotos: [...(day.fotos || []), ...neu] }; setDay(n); persist({ day: n });
+  };
+  const delFoto = async (id) => { delDayRow("fotos", id); try { if (window.storage) await window.storage.delete("btb_foto_" + id); } catch (e) {} };
+  const stillValid = (d) => (d.stillstand || []).filter((x) => x.start || x.ende || x.grund || x.sektion);
+  const fotosOf = (d) => (d.fotos || []).map((f) => ({ ...f, data: fotoData[f.id], still: f.stillId ? stillValid(d).findIndex((x) => x.id === f.stillId) + 1 : 0 })).filter((f) => f.data);
+  const delStill = (id) => {
+    (day.fotos || []).filter((f) => f.stillId === id).forEach((f) => { try { if (window.storage) window.storage.delete("btb_foto_" + f.id); } catch (e) {} });
+    const n = { ...day, stillstand: (day.stillstand || []).filter((x) => x.id !== id), fotos: (day.fotos || []).filter((f) => f.stillId !== id) }; setDay(n); persist({ day: n });
+  };
+  const copyFrom = (rec) => {
+    const neu = rec.positions.map((p) => ({ ...emptyDraft(), ...structuredClone(p), id: uid(), pruefen: true, personal: p.personal.map((x) => ({ ...x, id: uid() })), geraete: p.geraete.map((x) => ({ ...x, id: uid() })) }));
+    const list = [...positions, ...neu]; setPositions(list); persist({ positions: list }); setCopyOpen(false);
+  };
+  const confirmPosition = (id) => { const list = positions.map((p) => p.id === id ? { ...p, pruefen: false } : p); setPositions(list); persist({ positions: list }); };
+  const updStillSub = (sid, key, rows) => updDayRow("stillstand", sid, { [key]: rows });
+
 
   // Abgeleitete Optionen / Lookups aus den (editierbaren) Listen
   const sektOpts = useMemo(() => lists.sektionen.filter(Boolean).map((s) => ({ value: s, label: s })), [lists.sektionen]);
@@ -603,8 +839,8 @@ export default function App() {
   const basMeta = (code) => { const b = lists.bas.find((x) => x.code === code); const lvm = BAS_LV[code]; return { name: b?.name || code, lv: lvm?.lv, me: lvm?.me, desc: b?.desc || "", wann: b?.wann || "" }; };
 
   /* --- Wizard --- */
-  const startNew = (single = false, back = "home") => { setDraft(emptyDraft()); setEditingId(null); setStep(0); setOnePage(single === true); setReturnTo(back); setView("wizard"); };
-  const startEdit = (p, single = false, back = "home") => { setDraft(structuredClone(p)); setEditingId(p.id); setStep(0); setOnePage(single === true); setReturnTo(back); setView("wizard"); };
+  const startNew = () => { setDraft(emptyDraft()); setEditingId(null); setView("wizard"); };
+  const startEdit = (p) => { setDraft({ ...emptyDraft(), ...structuredClone(p) }); setEditingId(p.id); setView("wizard"); };
   const setD = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
   const updRow = (key, id, patch) => setDraft((d) => ({ ...d, [key]: d[key].map((x) => x.id === id ? { ...x, ...patch } : x) }));
   const addRow = (key, blank) => setDraft((d) => ({ ...d, [key]: [...d[key], { id: uid(), ...blank }] }));
@@ -620,30 +856,32 @@ export default function App() {
     !!(draft.beschreibung && draft.beschreibung.trim() && num(draft.menge) > 0 && draft.einheit),
     persComplete.length >= 1 && !persIncomplete,
     !gerIncomplete,
-    true,
   ];
-  const canNext = stepValid[step];
-  const canGoTo = (i) => i <= step || stepValid.slice(0, i).every(Boolean);
   const allValid = stepValid.every(Boolean);
 
   const savePosition = () => {
     const exists = positions.some((p) => p.id === draft.id);
-    const list = exists ? positions.map((p) => p.id === draft.id ? draft : p) : [draft, ...positions];
-    setPositions(list); persist({ positions: list }); setView(returnTo);
+    const done = { ...draft, pruefen: false }; // gespeichert = geprüft
+    const list = exists ? positions.map((p) => p.id === draft.id ? done : p) : [done, ...positions];
+    setPositions(list); persist({ positions: list }); setView("home");
   };
   const deletePosition = (id) => { const list = positions.filter((p) => p.id !== id); setPositions(list); persist({ positions: list }); };
   // Tagesweite Listen (Stillstand, Vorkommnisse) – direkt im day-Objekt, sofort gespeichert
   const addDayRow = (key, blank) => { const n = { ...day, [key]: [...(day[key] || []), { id: uid(), ...blank }] }; setDay(n); persist({ day: n }); };
   const updDayRow = (key, id, patch) => { const n = { ...day, [key]: (day[key] || []).map((x) => x.id === id ? { ...x, ...patch } : x) }; setDay(n); persist({ day: n }); };
   const delDayRow = (key, id) => { const n = { ...day, [key]: (day[key] || []).filter((x) => x.id !== id) }; setDay(n); persist({ day: n }); };
-  const hasContent = positions.length > 0 || (day.stillstand || []).length > 0 || (day.vorkommnisse || []).length > 0;
+  const hasContent = positions.length > 0 || (day.stillstand || []).length > 0 || (day.vorkommnisse || []).length > 0 || (day.fotos || []).length > 0;
   const closeDay = () => {
-    if (!hasContent) return;
+    if (!hasContent || positions.some((p) => p.pruefen)) return;
     const arch = [{ id: uid(), day: { ...day }, positions, savedAt: new Date().toISOString() }, ...archive];
     const nd = emptyDay(); setArchive(arch); setPositions([]); setDay(nd); persist({ archive: arch, positions: [], day: nd });
   };
   const loadArchived = (rec) => { setDay({ ...rec.day }); setPositions(rec.positions); setView("home"); };
-  const deleteArchived = (id) => { const arch = archive.filter((a) => a.id !== id); setArchive(arch); persist({ archive: arch }); };
+  const deleteArchived = (id) => {
+    const rec = archive.find((a) => a.id === id);
+    ((rec && rec.day && rec.day.fotos) || []).forEach((f) => { try { if (window.storage) window.storage.delete("btb_foto_" + f.id); } catch (e) {} });
+    const arch = archive.filter((a) => a.id !== id); setArchive(arch); persist({ archive: arch });
+  };
 
   const totals = useMemo(() => {
     let ph = 0, gh = 0; const map = new Map();
@@ -658,40 +896,58 @@ export default function App() {
     return { ph, gh, mengen: [...map.values()].sort((a, b) => a.bas.localeCompare(b.bas)) };
   }, [positions]);
 
-  /* ============ SETTINGS / LISTEN VERWALTEN ============ */
+  /* ============ EINSTELLUNGEN / LISTEN ============ */
   if (view === "settings") {
-    const needLogin = SB_ON && !session;
+    const needLogin = SB_ON && !session && !localEdit;
+    const TABS = [["sektionen", "Sektionen"], ["taetigkeiten", "Tätigkeiten"], ["rollen", "Rollen"], ["nachunternehmer", "Nachunternehmer"], ["geraete", "Geräte"], ["bas", "BAS"]];
     return (
       <Shell>
-        <TopBar title="Listen verwalten" subtitle={SB_ON ? (session ? `Admin: ${session.email}` : "Admin-Anmeldung erforderlich") : "Lokaler Modus"}
-          left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-sm bg-white/10 text-white hover:bg-white/20"><ChevronLeft size={18} /></button>}
-          right={SB_ON
-            ? (session ? <button onClick={doLogout} className="inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/10"><LogOut size={15} /> <span className="hidden sm:inline">Abmelden</span></button> : null)
-            : <button onClick={resetLists} className="inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/10"><RotateCcw size={15} /> <span className="hidden sm:inline">Standard</span></button>} />
-        <main className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-4 sm:py-6">
+        <TopBar title="Einstellungen" subtitle={session ? `Admin: ${session.email}` : localEdit ? "Listen nur auf diesem Gerät" : SB_ON ? "Anmeldung für gemeinsame Listen" : "Lokaler Modus"}
+          left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-sm bg-white/10 text-white hover:bg-white/20" aria-label="Zurück"><ChevronLeft size={18} /></button>}
+          right={session ? <button onClick={doLogout} className="inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/10"><LogOut size={15} /> <span className="hidden sm:inline">Abmelden</span></button> : null} />
+        <main className="mx-auto max-w-4xl space-y-4 px-3 py-4 sm:px-4 sm:py-6">
           {needLogin ? (
-            <LoginCard onSubmit={async (email, pw) => { const s = await sbLogin(email, pw); setSession(s); persistSession(s); }} />
+            <div className="min-w-0 space-y-4">
+              <LoginCard onSubmit={async (email, pw) => { const s = await sbLogin(email, pw); setSession(s); persistSession(s); }} />
+              <div className="mx-auto max-w-sm border-l-4 border-[#FAD200] bg-[#DAE1F0] p-4">
+                <p className="text-sm text-[#0F1E46]">Ohne Anmeldung kannst du die Listen trotzdem ändern. Die Änderungen gelten dann <span className="font-bold">nur auf diesem Gerät</span> und werden nicht mit anderen geteilt.</p>
+                <button onClick={enableLocalEdit} className="mt-3 inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-4 py-2.5 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><Pencil size={15} /> Ohne Anmeldung bearbeiten</button>
+              </div>
+            </div>
           ) : (
             <>
-              <p className={`border-l-4 border-[#FAD200] bg-[#DAE1F0] px-3 py-2 text-sm ${SB_ON ? "text-[#2E7D32]" : "text-[#0F1E46]/70"}`}>
-                {SB_ON
-                  ? <><ShieldCheck size={14} className="mr-1 inline" />Mit Supabase verbunden – Änderungen gelten sofort für alle Nutzer.</>
-                  : "Lokaler Modus (nur dieses Gerät). Trage in der App SUPABASE_URL + KEY ein und veröffentliche sie, damit Änderungen für alle gelten."}
-              </p>
+              <div className="border-l-4 border-[#FAD200] bg-[#DAE1F0] p-3 text-sm text-[#0F1E46]">
+                {session ? <span className="text-[#2E7D32]"><ShieldCheck size={14} className="mr-1 inline" />Als Admin angemeldet – Änderungen gelten für alle Nutzer.</span>
+                  : SB_ON ? <span>Änderungen gelten <span className="font-bold">nur auf diesem Gerät</span>. <button onClick={disableLocalEdit} className="font-semibold underline">Gemeinsame Listen wieder laden</button></span>
+                  : <span>Lokaler Modus: Änderungen gelten nur auf diesem Gerät.</span>}
+              </div>
               {listsErr && <p className="rounded-sm border border-[#C62828] bg-white px-3 py-2 text-sm text-[#C62828]">{listsErr}</p>}
 
-              <EditorCard icon={ListChecks} title="Sektionen" count={lists.sektionen.length}>
-                <StringListEditor items={lists.sektionen} onChange={(v) => setListKey("sektionen", v)} placeholder="z. B. Sektion 23" />
-              </EditorCard>
-              <EditorCard icon={ListChecks} title="Tätigkeiten" count={lists.taetigkeiten.length}>
-                <StringListEditor items={lists.taetigkeiten} onChange={(v) => setListKey("taetigkeiten", v)} placeholder="z. B. Spülbohrung" />
-              </EditorCard>
-              <EditorCard icon={Users} title="Rollen / Fachkräfte" count={lists.rollen.length}>
-                <StringListEditor items={lists.rollen} onChange={(v) => setListKey("rollen", v)} placeholder="z. B. Rohrleger" />
-              </EditorCard>
-              <BasEditor bas={lists.bas} onChange={(v) => setListKey("bas", v)} />
-              <GeraeteEditor geraete={lists.geraete} onChange={(v) => setListKey("geraete", v)} />
-              {SB_ON && session && <button onClick={resetLists} className="inline-flex items-center gap-1.5 rounded-sm border border-[#0F1E46] bg-white px-3 py-2 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><RotateCcw size={15} /> Auf Standard zurücksetzen</button>}
+              <section className="rounded-sm border border-[#C8D2E6] border-l-4 border-l-[#FAD200] bg-white p-4">
+                <h2 className="text-sm font-bold text-[#0F1E46]">Alle Listen in Excel bearbeiten</h2>
+                <p className="mt-1 text-sm text-[#0F1E46]/70">Herunterladen, in Excel ändern, wieder hochladen. Jede Liste ist ein Tabellenblatt.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button onClick={exportLists} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-4 py-2.5 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><Download size={16} /> Excel herunterladen</button>
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-sm bg-[#0F1E46] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#0F1E46]/90"><Upload size={16} /> Excel hochladen
+                    <input type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { importLists(e.target.files && e.target.files[0]); e.target.value = ""; }} />
+                  </label>
+                  <button onClick={() => { applyLists(defaultLists()); setListsMsg("Auf Standard zurückgesetzt."); }} className="inline-flex items-center gap-2 rounded-sm px-3 py-2.5 text-sm font-semibold text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]"><RotateCcw size={15} /> Standard</button>
+                </div>
+                {listsMsg && <p className="mt-2 text-sm font-semibold text-[#0F1E46]">{listsMsg}</p>}
+              </section>
+
+              <div className="flex flex-wrap gap-2">
+                {TABS.map(([k, l]) => (
+                  <button key={k} onClick={() => setListsTab(k)} className={`min-h-[40px] rounded-sm border px-3 text-sm font-semibold transition ${listsTab === k ? "border-[#0F1E46] bg-[#DAE1F0] text-[#0F1E46]" : "border-[#C8D2E6] bg-white text-[#0F1E46]/70 hover:bg-[#DAE1F0]"}`}>{l} <span className="text-[#677BA4]">{k === "bas" ? lists.bas.length : k === "geraete" ? lists.geraete.length : (lists[k] || []).filter((x) => x.trim()).length}</span></button>
+                ))}
+              </div>
+
+              {listsTab === "sektionen" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><LinesEditor items={lists.sektionen} onChange={(v) => setListKey("sektionen", v)} placeholder="Sektion 1" /></section>}
+              {listsTab === "taetigkeiten" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><LinesEditor items={lists.taetigkeiten} onChange={(v) => setListKey("taetigkeiten", v)} placeholder="Unterboden ausheben" /></section>}
+              {listsTab === "rollen" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><LinesEditor items={lists.rollen} onChange={(v) => setListKey("rollen", v)} placeholder="Polier" /></section>}
+              {listsTab === "nachunternehmer" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><LinesEditor items={lists.nachunternehmer || []} onChange={(v) => setListKey("nachunternehmer", v)} placeholder="Name der Firma" /></section>}
+              {listsTab === "geraete" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><GeraeteLines key={listsMsg} geraete={lists.geraete} onChange={(v) => setListKey("geraete", v)} /></section>}
+              {listsTab === "bas" && <BasEditor bas={lists.bas} onChange={(v) => setListKey("bas", v)} />}
             </>
           )}
         </main>
@@ -699,33 +955,17 @@ export default function App() {
     );
   }
 
-  /* ============ WIZARD ============ */
+  /* ============ LEISTUNG ERFASSEN / BEARBEITEN (eine breite Seite) ============ */
   if (view === "wizard") {
+    const H = ({ children }) => (<h2 className="px-1 text-sm font-bold uppercase tracking-wider text-[#0F1E46]">{children}</h2>);
     return (
       <Shell>
-        <TopBar title={editingId ? "Leistung bearbeiten" : "Neue Leistung"} subtitle={onePage ? "Alles auf einer Seite" : `Schritt ${step + 1}/${STEPS.length} · ${STEPS[step]}`}
-          left={<button onClick={() => setView(returnTo)} className="flex h-9 w-9 items-center justify-center rounded-sm bg-white/10 text-white hover:bg-white/20" aria-label="Abbrechen"><X size={18} /></button>} />
-        <div className="mx-auto max-w-3xl px-3 pt-4 sm:px-4">
-          <div className="flex gap-2">
-            {[[false, "Schritt für Schritt"], [true, "Alles auf einer Seite"]].map(([v, l]) => (
-              <button key={l} onClick={() => setOnePage(v)} className={`min-h-[40px] flex-1 rounded-sm border px-2 text-sm font-semibold transition ${onePage === v ? "border-[#0F1E46] bg-[#DAE1F0] text-[#0F1E46]" : "border-[#C8D2E6] bg-white text-[#0F1E46]/70 hover:bg-[#DAE1F0]"}`}>{l}</button>
-            ))}
-          </div>
-        </div>
-        <div className={`mx-auto max-w-3xl px-4 pt-4 ${onePage ? "hidden" : ""}`}>
-          <div className="flex items-center gap-1.5">
-            {STEPS.map((s, i) => (
-              <button key={s} onClick={() => canGoTo(i) && setStep(i)} disabled={!canGoTo(i)} className="group flex-1 text-left">
-                <div className={`h-1.5 rounded-sm transition ${i <= step ? "bg-[#FAD200]" : "bg-[#C8D2E6]"}`} />
-                <span className={`mt-1 hidden text-[10px] font-semibold uppercase tracking-wider sm:block ${i === step ? "text-[#0F1E46]" : i < step ? "text-[#0F1E46]/70" : "text-[#677BA4]"}`}>{s}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <main className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-4">
-          {onePage && <h2 className="px-1 text-sm font-bold uppercase tracking-wider text-[#0F1E46]">1 · Leistung</h2>}
-          {(onePage || step === 0) && (
+        <TopBar title={editingId ? "Leistung bearbeiten" : "Neue Leistung"} subtitle={dateDE(day.datum)}
+          left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-sm bg-white/10 text-white hover:bg-white/20" aria-label="Abbrechen"><X size={18} /></button>} />
+        <main className="mx-auto max-w-6xl px-3 py-4 sm:px-4">
+          <div className="grid items-start gap-4 lg:grid-cols-2">
+            <div className="space-y-3">
+              <H>Leistung</H>
             <div className="space-y-4 rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
               <Field label="Sektion"><Combo value={draft.sektion} onChange={(v) => setD("sektion", v)} options={sektOpts} /></Field>
               {(() => { const si = sektInfo(draft.sektion); return si ? (
@@ -766,7 +1006,7 @@ export default function App() {
                 <img src={VORHABEN_IMG} alt="Vorhaben Querschnitt – Graben, Schutzstreifen, HGÜ 525 kV" className="w-full rounded-sm border border-[#C8D2E6] bg-white" />
               </div>
               <Field label="Tätigkeit"><Combo value={draft.taetigkeit} onChange={(v) => setD("taetigkeit", v)} options={taetOpts} /></Field>
-              <Field label="Nachunternehmer" hint="(optional)"><input className={inputCls} value={draft.nachunternehmer || ""} onChange={(e) => setD("nachunternehmer", e.target.value)} placeholder="Firma, falls ein Nachunternehmer die Leistung ausführt" /></Field>
+              <Field label="Ausführung durch"><NuSelect value={draft.nachunternehmer || ""} names={nuNames} onChange={(v) => { setD("nachunternehmer", v); rememberNu(v); }} /></Field>
               <div>
                 <div className="mb-1 flex items-center justify-between">
                   <Label hint="(Leistungs-/Kostenschlüssel)">BAS</Label>
@@ -789,10 +1029,7 @@ export default function App() {
               ) : null; })()}
               {!stepValid[0] && <p className="text-xs text-[#C62828]">Bitte Sektion, Vorhaben (oder „Vorhabenübergreifend: Ja"), Tätigkeit und BAS auswählen.</p>}
             </div>
-          )}
-
-          {onePage && <h2 className="px-1 text-sm font-bold uppercase tracking-wider text-[#0F1E46]">2 · Ausführung</h2>}
-          {(onePage || step === 1) && (
+              <H>Ausführung</H>
             <div className="space-y-4 rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
               <Field label="Beschreibung (Detail)">
                 <textarea rows={4} className={`${inputCls} min-h-[110px] py-2`} value={draft.beschreibung} onChange={(e) => setD("beschreibung", e.target.value)} placeholder="Was wurde konkret ausgeführt? Ort, Abschnitt, Besonderheiten, Behinderungen …" />
@@ -803,10 +1040,9 @@ export default function App() {
               </div>
               {!stepValid[1] && <p className="text-xs text-[#C62828]">Beschreibung, Menge (&gt; 0) und Einheit ausfüllen.</p>}
             </div>
-          )}
-
-          {onePage && <h2 className="px-1 text-sm font-bold uppercase tracking-wider text-[#0F1E46]">3 · Personal</h2>}
-          {(onePage || step === 2) && (
+            </div>
+            <div className="space-y-3">
+              <H>Personal</H>
             <div className="rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-sm text-[#0F1E46]/70">Wer hat an dieser Leistung gearbeitet?</p>
@@ -820,6 +1056,7 @@ export default function App() {
                       <Field label="Anzahl Personen"><input type="number" inputMode="numeric" className={inputCls} value={p.anzahl} onChange={(e) => updRow("personal", p.id, { anzahl: e.target.value })} placeholder="1" /></Field>
                       <Field label="Stunden / Person"><input type="number" inputMode="decimal" className={inputCls} value={p.stunden} onChange={(e) => updRow("personal", p.id, { stunden: e.target.value })} placeholder="0" /></Field>
                     </div>
+                    <div className="mt-3"><Field label="Namen" hint="(optional)"><input className={inputCls} value={p.name || ""} onChange={(e) => updRow("personal", p.id, { name: e.target.value })} placeholder="z. B. Müller, Popescu" /></Field></div>
                     {num(p.anzahl) > 0 && num(p.stunden) > 0 && <p className="mt-2 text-right text-xs text-[#0F1E46]/70">= <span className="tabular-nums font-semibold text-[#0F1E46]">{fmt(num(p.anzahl) * num(p.stunden))}</span> Pers.-Std.</p>}
                   </RowShell>
                 ))}
@@ -827,10 +1064,7 @@ export default function App() {
               <AddBtn onClick={() => addRow("personal", { rolle: "", anzahl: "", stunden: "" })}>Rolle hinzufügen</AddBtn>
               {!stepValid[2] && <p className="mt-2 text-xs text-[#C62828]">Mindestens eine Person mit Rolle, Anzahl (&gt; 0) und Stunden (&gt; 0). Angefangene Zeilen bitte vervollständigen oder entfernen.</p>}
             </div>
-          )}
-
-          {onePage && <h2 className="px-1 text-sm font-bold uppercase tracking-wider text-[#0F1E46]">4 · Geräte</h2>}
-          {(onePage || step === 3) && (
+              <H>Geräte</H>
             <div className="rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-sm text-[#0F1E46]/70">Welche Geräte waren im Einsatz?</p>
@@ -858,160 +1092,18 @@ export default function App() {
               <AddBtn onClick={() => addRow("geraete", { typ: "", geraet: "", anzahl: "1", stunden: "" })}>Gerät hinzufügen</AddBtn>
               {gerIncomplete && <p className="mt-2 text-xs text-[#C62828]">Bei gewähltem Gerät: genaues Gerät (falls hinterlegt), Anzahl (&gt; 0) und Betriebsstunden (&gt; 0) ausfüllen – oder die Zeile entfernen. Geräte sind sonst optional.</p>}
             </div>
-          )}
-
-          {!onePage && step === 4 && (
-            <div className="space-y-3">
-              <div className="rounded-sm border border-[#C8D2E6] bg-white">
-                <div className="flex items-center gap-2 border-b border-[#C8D2E6] px-4 py-3"><Layers size={16} className="text-[#0F1E46]" /><h3 className="text-sm font-bold">Leistung</h3></div>
-                <div className="space-y-1.5 px-4 py-3 text-sm">
-                  <SumLine k="Sektion" v={draft.sektion || "—"} />
-                  <SumLine k="Vorhaben" v={`${draft.vorhaben || "—"}${draft.vorhabenUeb === "Ja" ? " · übergreifend" : ""}`} />
-                  <SumLine k="Tätigkeit" v={draft.taetigkeit || "—"} />
-                  {draft.nachunternehmer && <SumLine k="Nachuntern." v={draft.nachunternehmer} />}
-                  <SumLine k="BAS" v={draft.bas ? `${draft.bas} – ${basName(draft.bas)}` : "—"} />
-                  <SumLine k="Menge" v={num(draft.menge) ? `${fmt(num(draft.menge))} ${draft.einheit}` : "—"} />
-                  {draft.beschreibung && <p className="pt-1 text-[#0F1E46]/70">{draft.beschreibung}</p>}
-                </div>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <MiniSum title="Personal" icon={Users} total={`${fmt(phOf(draft))} Pers.-Std.`} rows={draft.personal.filter((p) => p.rolle).map((p) => `${p.anzahl || "?"}× ${p.rolle} · ${p.stunden || 0} Std.`)} />
-                <MiniSum title="Geräte" icon={Truck} total={`${fmt(ghOf(draft))} Std.`} rows={draft.geraete.filter((g) => g.typ).map((g) => `${g.anzahl || 1}× ${geraetLabel(g)} · ${g.stunden || 0} Std.`)} />
-              </div>
             </div>
-          )}
+          </div>
         </main>
-
         <div className="sticky bottom-0 border-t border-[#C8D2E6] bg-white print:hidden">
-          <div className="mx-auto flex max-w-3xl items-center gap-2 px-3 py-3 sm:px-4">
-            {!onePage && step > 0
-              ? <button onClick={() => setStep((s) => s - 1)} className="inline-flex items-center gap-1 rounded-sm border border-[#0F1E46] bg-white px-4 py-3 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><ChevronLeft size={16} /> Zurück</button>
-              : <button onClick={() => setView(returnTo)} className="rounded-sm border border-[#0F1E46] bg-white px-4 py-3 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]">Abbrechen</button>}
+          <div className="mx-auto flex max-w-6xl items-center gap-2 px-3 py-3 sm:px-4">
+            <button onClick={() => setView("home")} className="rounded-sm border border-[#0F1E46] bg-white px-4 py-3 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]">Abbrechen</button>
             <div className="flex-1" />
-            {onePage
-              ? <button onClick={() => allValid && savePosition()} disabled={!allValid} className={`inline-flex items-center gap-2 rounded-sm px-5 py-3 text-sm font-bold transition ${allValid ? "bg-[#FAD200] text-[#0F1E46] hover:bg-[#FCE466]" : "cursor-not-allowed bg-[#B1BFD8] text-white"}`}><Save size={18} /> Position speichern</button>
-              : step < STEPS.length - 1
-              ? <button onClick={() => canNext && setStep((s) => s + 1)} disabled={!canNext} className={`inline-flex items-center gap-1 rounded-sm px-5 py-3 text-sm font-bold text-white transition ${canNext ? "bg-[#0F1E46] hover:bg-[#0F1E46]/90" : "cursor-not-allowed bg-[#B1BFD8]"}`}>Weiter <ChevronRight size={16} /></button>
-              : <button onClick={savePosition} className="inline-flex items-center gap-2 rounded-sm bg-[#FAD200] px-5 py-3 text-sm font-bold text-[#0F1E46] hover:bg-[#FCE466]"><Save size={18} /> Position speichern</button>}
+            {!allValid && <span className="hidden text-xs text-[#C62828] sm:inline">Bitte alle Pflichtfelder ausfüllen</span>}
+            <button onClick={() => allValid && savePosition()} disabled={!allValid} className={`inline-flex items-center gap-2 rounded-sm px-5 py-3 text-sm font-bold transition ${allValid ? "bg-[#FAD200] text-[#0F1E46] hover:bg-[#FCE466]" : "cursor-not-allowed bg-[#B1BFD8] text-white"}`}><Save size={18} /> Position speichern</button>
           </div>
         </div>
         {basModal && <BasModal meta={basMeta(basModal)} code={basModal} onClose={() => setBasModal(null)} />}
-      </Shell>
-    );
-  }
-
-  /* ============ ÜBERSICHT (alles auf einer Seite) ============ */
-  if (view === "overview") {
-    const W = WETTER.find((w) => w.key === day.wetter);
-    const still = (day.stillstand || []).filter((x) => x.start || x.ende || x.grund || x.sektion);
-    const vork = (day.vorkommnisse || []).filter((v) => (v.text || "").trim());
-    // Arbeitszeit des Tages in Stunden (aus Start/Ende), 0 wenn nicht eingetragen
-    const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ""); return m ? +m[1] * 60 + +m[2] : null; };
-    const a0 = toMin(day.arbeitStart), a1 = toMin(day.arbeitEnde);
-    const dayH = a0 !== null && a1 !== null && a1 > a0 ? (a1 - a0) / 60 : 0;
-    // Summen je Gerät bzw. Rolle über alle Leistungen des Tages
-    const agg = (rows) => { const m = new Map(); rows.forEach(({ label, anz, std }) => { const e = m.get(label) || { label, count: 0, hours: 0 }; e.count = Math.max(e.count, anz); e.hours += anz * std; m.set(label, e); }); return [...m.values()].sort((x, y) => y.hours - x.hours); };
-    const gerRows = agg(positions.flatMap((p) => p.geraete.filter((g) => g.typ).map((g) => ({ label: geraetLabel(g), anz: num(g.anzahl) || 1, std: num(g.stunden) }))));
-    const persRows = agg(positions.flatMap((p) => p.personal.filter((x) => x.rolle).map((x) => ({ label: x.rolle, anz: num(x.anzahl), std: num(x.stunden) }))));
-    const KV = ({ k, v }) => (<div className="flex gap-3 text-sm"><span className="w-24 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-[#677BA4]">{k}</span><span className="text-[#0F1E46]">{v || "—"}</span></div>);
-    const HoursTable = ({ title, icon: Icon, first, rows, unit }) => {
-      const sum = rows.reduce((t, r) => t + r.hours, 0);
-      return (
-        <section className="rounded-sm border border-[#C8D2E6] bg-white p-4">
-          <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-[#0F1E46]"><Icon size={16} /> {title} <span className="text-[#677BA4]">({rows.length})</span></h2>
-          {rows.length === 0 ? <p className="text-sm text-[#0F1E46]/70">Noch nichts erfasst.</p> : (
-            <table className="w-full border-collapse text-sm">
-              <thead><tr className="bg-[#0F1E46] text-left text-[11px] font-bold uppercase tracking-wider text-white">
-                <th className="px-2 py-1">{first}</th><th className="px-2 py-1 text-right">Anz.</th><th className="px-2 py-1 text-right">Std.</th><th className="px-2 py-1">Vom Arbeitstag</th>
-              </tr></thead>
-              <tbody>
-                {rows.map((r) => { const avail = r.count * dayH; const pct = avail > 0 ? r.hours / avail : 0; return (
-                  <tr key={r.label} className="border-b border-[#C8D2E6] align-top text-[#0F1E46]">
-                    <td className="px-2 py-1.5">{r.label}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{fmt(r.count)}</td>
-                    <td className="px-2 py-1.5 text-right font-bold tabular-nums">{fmt(r.hours)}</td>
-                    <td className="w-[38%] px-2 py-1.5">
-                      {avail > 0 ? (<>
-                        <div className="h-2 w-full bg-[#C8D2E6]"><div className={`h-2 ${pct > 1 ? "bg-[#C62828]" : "bg-[#0F1E46]"}`} style={{ width: `${Math.min(pct, 1) * 100}%` }} /></div>
-                        <p className={`mt-0.5 text-[11px] tabular-nums ${pct > 1 ? "font-bold text-[#C62828]" : "text-[#0F1E46]/70"}`}>{fmt(r.hours)} von {fmt(avail)} Std. · {Math.round(pct * 100)} %</p>
-                      </>) : <span className="text-[11px] text-[#677BA4]">—</span>}
-                    </td>
-                  </tr>
-                ); })}
-                <tr className="font-bold text-[#0F1E46]"><td className="border-t-2 border-[#0F1E46] px-2 py-1.5">Summe</td><td className="border-t-2 border-[#0F1E46]" /><td className="border-t-2 border-[#0F1E46] px-2 py-1.5 text-right tabular-nums">{fmt(sum)}</td><td className="border-t-2 border-[#0F1E46] px-2 py-1.5 text-[11px] font-normal">{unit}</td></tr>
-              </tbody>
-            </table>
-          )}
-        </section>
-      );
-    };
-    return (
-      <Shell>
-        <TopBar title="Übersicht" subtitle={`${dateDE(day.datum)} · alles auf einer Seite`}
-          left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-sm bg-white/10 text-white hover:bg-white/20" aria-label="Zurück"><ChevronLeft size={18} /></button>} />
-        <main className="mx-auto max-w-6xl space-y-4 px-3 py-4 sm:px-4 sm:py-6">
-          <section className="rounded-sm border border-[#C8D2E6] border-l-4 border-l-[#FAD200] bg-white p-4">
-            <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-bold text-[#0F1E46]">Kopfdaten</h2><button onClick={() => setView("home")} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0F1E46] underline"><Pencil size={12} /> ändern</button></div>
-            <div className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
-              <KV k="Projekt" v={day.projekt} /><KV k="Datum" v={dateDE(day.datum)} />
-              <KV k="Bauleiter" v={day.bauleiter} /><KV k="Gewerk" v={day.gewerk} />
-              <KV k="Arbeitszeit" v={(day.arbeitStart || day.arbeitEnde) ? `${day.arbeitStart || "–"} – ${day.arbeitEnde || "–"}${dayH ? ` (${fmt(dayH)} Std.)` : ""}` : ""} />
-              <KV k="Wetter" v={`${W ? W.label : ""} · ${day.tempMin || "–"}° / ${day.tempMax || "–"}° C`} />
-            </div>
-            {!dayH && <p className="mt-2 text-xs text-[#C62828]">Arbeitszeit Start und Ende eintragen – dann zeigt die Übersicht, wie viel vom Arbeitstag Geräte und Personal im Einsatz waren.</p>}
-          </section>
-
-          <div className="grid items-start gap-4 lg:grid-cols-2">
-            <div className="space-y-3">
-              <h2 className="px-1 text-sm font-bold text-[#0F1E46]">Erfasste Leistungen <span className="text-[#677BA4]">({positions.length})</span></h2>
-              {positions.length === 0 && <p className="rounded-sm border border-dashed border-[#96A8C7] bg-white p-4 text-sm text-[#0F1E46]/70">Noch keine Leistung erfasst.</p>}
-              {positions.map((p, i) => (
-                <section key={p.id} className="rounded-sm border border-[#C8D2E6] bg-white p-3">
-                  <div className="flex items-start gap-3">
-                    <span className="mt-0.5 rounded-sm bg-[#0F1E46] px-2 py-1 text-xs font-bold tabular-nums text-[#FAD200]">{p.bas}</span>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-[#0F1E46]">{i + 1}. {basName(p.bas)}</p>
-                      <p className="text-xs text-[#0F1E46]/70">{p.sektion} · {p.vorhaben || "—"}{p.vorhabenUeb === "Ja" ? " · übergreifend" : ""} · {p.taetigkeit}</p>
-                      {p.nachunternehmer && <p className="text-xs text-[#0F1E46]"><span className="font-bold">Nachunternehmer:</span> {p.nachunternehmer}</p>}
-                      {p.beschreibung && <p className="mt-1 text-sm text-[#0F1E46]/70">{p.beschreibung}</p>}
-                      <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#0F1E46]">
-                        {num(p.menge) > 0 && <span className="font-bold"><Layers size={11} className="mr-0.5 inline" />{fmt(num(p.menge))} {p.einheit}</span>}
-                        <span><Users size={11} className="mr-0.5 inline" />{fmt(phOf(p))} Pers.-Std.</span>
-                        <span><Truck size={11} className="mr-0.5 inline" />{fmt(ghOf(p))} Geräte-Std.</span>
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 gap-1">
-                      <button onClick={() => startEdit(p, true, "overview")} className="rounded-sm border border-[#0F1E46] p-2 text-[#0F1E46] hover:bg-[#DAE1F0]" aria-label="Bearbeiten"><Pencil size={15} /></button>
-                      <button onClick={() => deletePosition(p.id)} className="rounded-sm p-2 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]" aria-label="Löschen"><Trash2 size={15} /></button>
-                    </div>
-                  </div>
-                </section>
-              ))}
-              <button onClick={() => startNew(true, "overview")} className="inline-flex w-full items-center justify-center gap-2 rounded-sm border border-dashed border-[#96A8C7] bg-white px-4 py-3 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><Plus size={18} /> Leistung auf einer Seite erfassen</button>
-            </div>
-
-            <div className="space-y-4">
-              <HoursTable title="Geräte im Einsatz" icon={Truck} first="Gerät" rows={gerRows} unit="Geräte-Std." />
-              <HoursTable title="Personal im Einsatz" icon={Users} first="Rolle" rows={persRows} unit="Pers.-Std." />
-            </div>
-          </div>
-
-          <div className="grid items-start gap-4 lg:grid-cols-2">
-            <section className="rounded-sm border border-[#C8D2E6] bg-white p-4">
-              <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-bold text-[#0F1E46]">Stillstandszeiten <span className="text-[#677BA4]">({still.length})</span></h2><button onClick={() => setView("home")} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0F1E46] underline"><Pencil size={12} /> ändern</button></div>
-              {still.length === 0 ? <p className="text-sm text-[#0F1E46]/70">Keine.</p> : still.map((x, i) => (
-                <p key={x.id} className="border-b border-[#C8D2E6] py-1.5 text-sm text-[#0F1E46] last:border-0">{i + 1}. {x.sektion || "—"} · {x.vorhaben || "—"} · <span className="tabular-nums">{x.start || "–"}–{x.ende || "–"}</span> · {x.grund || "—"}</p>
-              ))}
-            </section>
-            <section className="rounded-sm border border-[#C8D2E6] bg-white p-4">
-              <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-bold text-[#0F1E46]">Besondere Vorkommnisse / Besucher <span className="text-[#677BA4]">({vork.length})</span></h2><button onClick={() => setView("home")} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0F1E46] underline"><Pencil size={12} /> ändern</button></div>
-              {vork.length === 0 ? <p className="text-sm text-[#0F1E46]/70">Keine.</p> : vork.map((v, i) => (<p key={v.id} className="border-b border-[#C8D2E6] py-1.5 text-sm text-[#0F1E46] last:border-0">{i + 1}. {v.text}</p>))}
-            </section>
-          </div>
-
-          {hasContent && <button onClick={() => { setPreviewData({ day, positions, back: "overview" }); setView("preview"); }} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-4 py-2.5 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><FileText size={16} /> Vorschau · PDF · Excel · XML</button>}
-          <p className="pt-2 text-center text-[10px] uppercase tracking-[0.3em] text-[#0F1E46]/70">HABAU INFRA | BAUTAGESBERICHT | © 2026</p>
-        </main>
       </Shell>
     );
   }
@@ -1042,6 +1134,7 @@ export default function App() {
   /* ============ VORSCHAU / DRUCK / EXPORT ============ */
   if (view === "preview") {
     const { day: d, positions: ps } = previewData;
+    const offenP = ps.filter((p) => p.pruefen).length;
     const W = WETTER.find((w) => w.key === d.wetter);
     const tot = ps.reduce((a, p) => ({ ph: a.ph + phOf(p), gh: a.gh + ghOf(p) }), { ph: 0, gh: 0 });
     return (
@@ -1053,8 +1146,9 @@ export default function App() {
             <button onClick={() => exportExcel(d, ps, basName)} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-3 py-2 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><FileSpreadsheet size={16} /> Excel</button>
             <button onClick={() => exportXML(d, ps, basName)} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-3 py-2 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><FileCode2 size={16} /> XML</button>
             <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-3 py-2 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><Printer size={16} /> PDF</button>
-            <button onClick={() => shareReport(d, ps, basName)} className="inline-flex items-center gap-2 rounded-sm bg-[#FAD200] px-4 py-2 text-sm font-bold text-[#0F1E46] hover:bg-[#FCE466]"><Share2 size={16} /> Senden</button>
+            <button onClick={() => offenP === 0 && shareReport(d, ps, basName, fotosOf(d))} disabled={offenP > 0} className={`inline-flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-bold ${offenP > 0 ? "cursor-not-allowed bg-[#B1BFD8] text-white" : "bg-[#FAD200] text-[#0F1E46] hover:bg-[#FCE466]"}`}><Share2 size={16} /> Senden</button>
           </div>
+          {offenP > 0 && <p className="mb-3 border-l-4 border-[#C62828] bg-white py-2 pl-3 text-sm font-bold text-[#C62828] print:hidden">{offenP} übernommene Leistung(en) sind noch nicht geprüft. Senden ist erst danach möglich.</p>}
           <div className="rounded-sm border border-[#C8D2E6] bg-white p-6 sm:p-8 print:border-0 print:p-0">
             <div className="mb-5 flex flex-col gap-2 border-b-4 border-[#FAD200] pb-4 sm:flex-row sm:items-start sm:justify-between">
               <div><p className="text-[11px] font-bold tracking-wide text-[#0F1E46]">HABAU INFRA</p><h1 className="text-2xl font-black tracking-tight">BAUTAGESBERICHT</h1><p className="text-sm text-[#0F1E46]/70">{d.projekt || "—"}</p></div>
@@ -1075,7 +1169,7 @@ export default function App() {
                 </div>
                 {p.beschreibung && <p className="mb-3 text-sm text-[#0F1E46]/70">{p.beschreibung}</p>}
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <MiniTable head={["Rolle", "Anz.", "Std."]} rows={p.personal.filter((x) => x.rolle).map((x) => [x.rolle, x.anzahl, x.stunden])} foot={`${fmt(phOf(p))} Pers.-Std.`} />
+                  <MiniTable head={["Rolle", "Anz.", "Std."]} rows={p.personal.filter((x) => x.rolle).map((x) => [x.rolle + (x.name ? ` – ${x.name}` : ""), x.anzahl, x.stunden])} foot={`${fmt(phOf(p))} Pers.-Std.`} />
                   <MiniTable head={["Gerät", "Anz.", "Std."]} rows={p.geraete.filter((x) => x.typ).map((x) => [geraetLabel(x), x.anzahl, x.stunden])} foot={`${fmt(ghOf(p))} Std.`} />
                 </div>
               </div>
@@ -1097,12 +1191,22 @@ export default function App() {
                           <td className="px-2 pt-1 tabular-nums">{s.start || "—"}</td><td className="px-2 pt-1 tabular-nums">{s.ende || "—"}</td>
                         </tr>
                         <tr className="border-b border-[#C8D2E6] text-[#0F1E46]">
-                          <td></td><td colSpan={4} className="px-2 pb-1"><span className="font-bold">Begründung: </span>{s.grund || "—"}</td>
+                          <td></td><td colSpan={4} className="px-2 pb-1"><span className="font-bold">Begründung: </span>{s.grund || "—"}{stillPers(s) && <span className="block"><span className="font-bold">Personal: </span>{stillPers(s)}</span>}{stillGer(s) && <span className="block"><span className="font-bold">Geräte: </span>{stillGer(s)}</span>}</td>
                         </tr>
                       </Fragment>
                     ))}
                   </tbody>
                 </table></div>
+                {(d.fotos || []).filter((f) => f.stillId).length > 0 && (
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    {(d.fotos || []).filter((f) => f.stillId).map((f) => { const nr = (d.stillstand || []).filter((x) => x.start || x.ende || x.grund || x.sektion).findIndex((x) => x.id === f.stillId) + 1; return (
+                      <figure key={f.id} className="break-inside-avoid">
+                        {fotoData[f.id] ? <img src={fotoData[f.id]} alt={f.text || f.name} className="w-full rounded-sm border border-[#C8D2E6]" /> : <div className="flex h-28 items-center justify-center bg-[#DAE1F0] text-xs text-[#677BA4]">Foto nicht auf diesem Gerät</div>}
+                        <figcaption className="mt-1 text-xs text-[#0F1E46]"><span className="font-bold">Stillstand {nr || ""}:</span> {f.text || f.name}</figcaption>
+                      </figure>
+                    ); })}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1115,6 +1219,20 @@ export default function App() {
               </div>
             )}
 
+            {(d.fotos || []).filter((f) => !f.stillId).length > 0 && (
+              <div className="mt-6">
+                <h2 className="mb-2 border-b border-[#C8D2E6] pb-1 text-sm font-bold uppercase tracking-wider text-[#0F1E46]">Fotos</h2>
+                <div className="grid grid-cols-2 gap-3">
+                  {(d.fotos || []).filter((f) => !f.stillId).map((f, i) => (
+                    <figure key={f.id} className="break-inside-avoid">
+                      {fotoData[f.id] ? <img src={fotoData[f.id]} alt={f.text || f.name} className="w-full rounded-sm border border-[#C8D2E6]" /> : <div className="flex h-28 items-center justify-center bg-[#DAE1F0] text-xs text-[#677BA4]">Foto nicht auf diesem Gerät</div>}
+                      <figcaption className="mt-1 text-xs text-[#0F1E46]">{i + 1}. {f.text || f.name}</figcaption>
+                    </figure>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <p className="mt-6 border-t border-[#C8D2E6] pt-3 text-center text-[10px] uppercase tracking-[0.3em] text-[#0F1E46]/70">HABAU INFRA | BAUTAGESBERICHT | © 2026</p>
           </div>
         </div>
@@ -1122,18 +1240,37 @@ export default function App() {
     );
   }
 
-  /* ============ HOME ============ */
+  /* ============ HAUPTSEITE (Übersicht, alles auf einer Seite) ============ */
+  const dayH = spanH(day.arbeitStart, day.arbeitEnde);
+  // Gruppieren nach Kategorie (Gerätetyp bzw. Rolle); Details = genaues Gerät bzw. Name
+  const group = (rows) => {
+    const g = new Map();
+    rows.forEach(({ cat, det, anz, std, pid, bas }) => {
+      const e = g.get(cat) || { label: cat, hours: 0, byPos: new Map(), det: new Map() };
+      e.hours += anz * std; e.byPos.set(pid, (e.byPos.get(pid) || 0) + anz);
+      const d = e.det.get(det) || { label: det, hours: 0, byPos: new Map(), bas: new Set() };
+      d.hours += anz * std; d.byPos.set(pid, (d.byPos.get(pid) || 0) + anz); d.bas.add(bas); e.det.set(det, d);
+      g.set(cat, e);
+    });
+    const cnt = (m) => Math.max(0, ...m.values());
+    return [...g.values()].map((e) => ({ label: e.label, hours: e.hours, count: cnt(e.byPos), details: [...e.det.values()].map((d) => ({ label: d.label, hours: d.hours, count: cnt(d.byPos), wo: "BAS " + [...d.bas].join(", ") })).sort((x, y) => y.hours - x.hours) })).sort((x, y) => y.hours - x.hours);
+  };
+  const gerRows = group(positions.flatMap((p) => p.geraete.filter((g) => g.typ).map((g) => ({ cat: g.typ, det: g.geraet || "ohne genaue Angabe", anz: num(g.anzahl) || 1, std: num(g.stunden), pid: p.id, bas: p.bas }))));
+  const persRows = group(positions.flatMap((p) => p.personal.filter((x) => x.rolle).map((x) => ({ cat: x.rolle, det: (x.name || "").trim() || "ohne Namen", anz: num(x.anzahl), std: num(x.stunden), pid: p.id, bas: p.bas }))));
+  const offen = positions.filter((p) => p.pruefen).length;
+  const iconBtn = "rounded-sm p-2 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]";
   return (
     <Shell>
-      <TopBar title="Bautagesbericht" subtitle="Tägliche Leistungserfassung"
+      <TopBar title="Bautagesbericht" subtitle={`${dateDE(day.datum)} · Übersicht`}
         right={
           <div className="flex gap-1">
-            <button onClick={() => setView("settings")} className="inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/10"><Settings size={15} /> <span className="hidden sm:inline">Listen</span></button>
+            <button onClick={() => setView("settings")} className="inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/10"><Settings size={15} /> <span className="hidden sm:inline">Einstellungen</span></button>
             <button onClick={() => setView("archive")} className="inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/10"><Archive size={15} /> <span className="hidden sm:inline">Berichte</span></button>
           </div>
         } />
-      <main className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-4 sm:py-6">
-        <section className="rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
+      <main className="mx-auto max-w-6xl space-y-4 px-3 py-4 sm:px-4 sm:py-6">
+        <div className="grid items-start gap-4 lg:grid-cols-[3fr_2fr]">
+          <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Projekt"><input className={inputCls} value={day.projekt} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, projekt: v })); }} placeholder="Bauvorhaben" /></Field>
             <Field label="Datum"><input type="date" className={inputCls} value={day.datum} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, datum: v })); }} /></Field>
@@ -1145,8 +1282,8 @@ export default function App() {
           </div>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Arbeitszeit Start"><input type="time" className={inputCls} value={day.arbeitStart} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, arbeitStart: v })); }} /></Field>
-              <Field label="Arbeitszeit Ende"><input type="time" className={inputCls} value={day.arbeitEnde} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, arbeitEnde: v })); }} /></Field>
+              <Field label="Arbeit von"><input type="time" className={inputCls} value={day.arbeitStart} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, arbeitStart: v })); }} /></Field>
+              <Field label="Arbeit bis"><input type="time" className={inputCls} value={day.arbeitEnde} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, arbeitEnde: v })); }} /></Field>
             </div>
             <Field label="Gewerk" hint="(frei)"><input className={inputCls} value={day.gewerk} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, gewerk: v })); }} placeholder="z. B. Tiefbau / HDD / Schweißkolonne" /></Field>
           </div>
@@ -1159,8 +1296,8 @@ export default function App() {
             </div>
           </div>
         </section>
-
-        <div className="overflow-hidden rounded-sm border border-[#C8D2E6] border-l-4 border-l-[#FAD200] bg-white">
+          <div className="min-w-0 space-y-4">
+            <div className="overflow-hidden rounded-sm border border-[#C8D2E6] border-l-4 border-l-[#FAD200] bg-white">
           <div className="flex items-center gap-2 border-b border-[#C8D2E6] px-4 py-2.5"><Gauge size={16} className="text-[#0F1E46]" /><h2 className="text-sm font-bold">Tagesübersicht</h2><span className="hidden text-xs text-[#677BA4] sm:inline">— Summe aller Positionen, Basis für die Leistungsmeldung</span></div>
           <div className="grid grid-cols-3 divide-x divide-[#C8D2E6]">
             <Metric value={fmt(totals.ph)} unit="Std." label="Personal" />
@@ -1182,58 +1319,117 @@ export default function App() {
             </div>
           )}
         </div>
+            {!dayH && <p className="border-l-4 border-[#FAD200] bg-[#DAE1F0] p-3 text-xs text-[#0F1E46]">Arbeitszeit Start und Ende eintragen – dann zeigt die Übersicht, wie viel vom Arbeitstag Geräte und Personal im Einsatz waren.</p>}
+          </div>
+        </div>
 
-        <section>
-          <h2 className="mb-2 px-1 text-sm font-bold text-[#0F1E46]">Erfasste Leistungen <span className="text-[#677BA4]">({positions.length})</span></h2>
-          {positions.length === 0 ? (
-            <div className="rounded-sm border border-dashed border-[#C8D2E6] bg-white py-10 text-center"><ClipboardList className="mx-auto mb-3 text-[#677BA4]" size={40} /><p className="font-medium text-[#0F1E46]/70">Noch keine Leistung erfasst.</p><p className="text-sm text-[#677BA4]">Lege die erste Position über den Button unten an.</p></div>
-          ) : (
-            <div className="space-y-2">
-              {positions.map((p) => (
-                <div key={p.id} className="rounded-sm border border-[#C8D2E6] bg-white p-3 transition hover:border-[#96A8C7]">
-                  <div className="flex items-start gap-3">
-                    <span className="mt-0.5 rounded-sm bg-[#0F1E46] px-2 py-1 tabular-nums text-xs font-bold text-[#FAD200]">{p.bas}</span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold text-[#0F1E46]">{basName(p.bas)}</p>
-                      <p className="truncate text-xs text-[#0F1E46]/70">{p.sektion} · {p.taetigkeit}{p.nachunternehmer ? ` · NU: ${p.nachunternehmer}` : ""}</p>
-                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[#0F1E46]/70">
-                        {num(p.menge) > 0 && <span className="font-medium text-[#0F1E46]"><Layers size={11} className="mr-0.5 inline" />{fmt(num(p.menge))} {p.einheit}</span>}
-                        <span><Users size={11} className="mr-0.5 inline" />{fmt(phOf(p))} Std.</span>
-                        <span><Truck size={11} className="mr-0.5 inline" />{fmt(ghOf(p))} Std.</span>
+        <div className="grid items-start gap-4 lg:grid-cols-[3fr_2fr]">
+          <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4">
+            <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-[#0F1E46]"><ClipboardList size={16} /> Erfasste Leistungen <span className="text-[#677BA4]">({positions.length})</span></h2>
+            {offen > 0 && <p className="mb-2 border-l-4 border-[#C62828] bg-white py-1 pl-3 text-sm font-bold text-[#C62828]">{offen} übernommene Leistung(en) noch prüfen: öffnen und speichern oder mit dem Haken bestätigen.</p>}
+            {positions.length === 0 ? <p className="rounded-sm border border-dashed border-[#96A8C7] p-4 text-sm text-[#0F1E46]/70">Noch keine Leistung erfasst.</p> : (
+              <table className="w-full table-fixed border-collapse text-sm">
+                <thead><tr className="bg-[#0F1E46] text-left text-[11px] font-bold uppercase tracking-wider text-white">
+                  <th className="w-14 px-2 py-1">BAS</th><th className="px-2 py-1">Leistung</th><th className="hidden w-24 px-2 py-1 text-right sm:table-cell">Menge</th><th className="w-[34%] px-2 py-1 sm:w-44">Ausführung durch</th><th className="w-[76px] px-1 py-1" />
+                </tr></thead>
+                <tbody>
+                  {positions.map((p) => (
+                    <tr key={p.id} onClick={() => startEdit(p)} className={`cursor-pointer border-b border-[#C8D2E6] align-top hover:bg-[#DAE1F0]/40 ${p.pruefen ? "text-[#C62828]" : "text-[#0F1E46]"}`}>
+                      <td className={`px-2 py-2 ${p.pruefen ? "border-l-4 border-[#C62828]" : ""}`}><span className="rounded-sm bg-[#0F1E46] px-1.5 py-0.5 text-xs font-bold tabular-nums text-[#FAD200]">{p.bas}</span></td>
+                      <td className="px-2 py-2">
+                        <p className="break-words font-semibold">{basName(p.bas)}</p>
+                        {p.pruefen && <p className="text-[11px] font-bold uppercase tracking-wider">Übernommen – bitte prüfen</p>}
+                        <p className={`text-xs ${p.pruefen ? "" : "text-[#0F1E46]/70"}`}>{p.sektion} · {p.vorhaben || "—"}{p.vorhabenUeb === "Ja" ? " · übergr." : ""} · {p.taetigkeit}</p>
+                        <p className="mt-0.5 text-xs text-[#0F1E46]/70"><span className="font-bold text-[#0F1E46] sm:hidden">{num(p.menge) ? `${fmt(num(p.menge))} ${p.einheit} · ` : ""}</span>{fmt(phOf(p))} Pers.-Std. · {fmt(ghOf(p))} Geräte-Std.</p>
+                      </td>
+                      <td className="hidden whitespace-nowrap px-2 py-2 text-right font-bold tabular-nums sm:table-cell">{num(p.menge) ? `${fmt(num(p.menge))} ${p.einheit}` : "—"}</td>
+                      <td className="px-2 py-1.5"><NuSelect compact value={p.nachunternehmer || ""} names={nuNames} onChange={(v) => setPositionNu(p.id, v)} /></td>
+                      <td className="whitespace-nowrap px-1 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
+                        {p.pruefen
+                          ? <button onClick={() => confirmPosition(p.id)} className="rounded-sm p-2 text-[#C62828] hover:bg-[#DAE1F0]" aria-label="Als geprüft bestätigen"><CheckCircle2 size={16} /></button>
+                          : <button onClick={() => startEdit(p)} className="rounded-sm p-2 text-[#0F1E46] hover:bg-[#DAE1F0]" aria-label="Bearbeiten"><Pencil size={15} /></button>}
+                        <button onClick={() => deletePosition(p.id)} className={iconBtn} aria-label="Löschen"><Trash2 size={15} /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <AddBtn onClick={() => startNew()}>Leistung hinzufügen</AddBtn>
+              <button onClick={() => setCopyOpen(true)} className="mt-3 inline-flex items-center gap-2 rounded-sm bg-[#FAD200] px-3 py-2 text-sm font-bold text-[#0F1E46] transition hover:bg-[#FCE466]"><Copy size={16} /> Aus früherem Tag übernehmen</button>
+            </div>
+          </section>
+
+          <div className="min-w-0 space-y-4">
+            <HoursTable title="Geräte im Einsatz" icon={Truck} first="Gerätetyp" rows={gerRows} unit="Geräte-Std." dayH={dayH} />
+            <HoursTable title="Personal im Einsatz" icon={Users} first="Rolle" rows={persRows} unit="Pers.-Std." dayH={dayH} />
+          </div>
+        </div>
+
+        <div className="grid items-start gap-4 lg:grid-cols-[3fr_2fr]">
+          <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white">
+            <div className="flex items-center gap-2 border-b border-[#C8D2E6] px-4 py-2.5"><Clock size={16} className="text-[#0F1E46]" /><h2 className="text-sm font-bold">Stillstandszeiten</h2><span className="text-xs text-[#677BA4]">({(day.stillstand || []).length})</span></div>
+            <div className="space-y-3 p-4">
+              {(day.stillstand || []).length === 0 && <p className="text-sm text-[#677BA4]">Keine Stillstandszeiten.</p>}
+              {(day.stillstand || []).map((s, i) => { const d = spanH(s.start, s.ende); return (
+                <div key={s.id} className="rounded-sm border border-[#C8D2E6] bg-[#DAE1F0]/40 p-3">
+                  <div className="mb-2 flex items-center justify-between"><span className="text-[11px] font-bold uppercase tracking-wider text-[#677BA4]">Stillstand {i + 1}{d ? ` · ${fmt(d)} Std.` : ""}</span><button onClick={() => delStill(s.id)} className={iconBtn} aria-label="Stillstand löschen"><Trash2 size={16} /></button></div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Sektion"><Combo value={s.sektion} onChange={(v) => updDayRow("stillstand", s.id, { sektion: v })} options={sektOpts} /></Field>
+                    <Field label="Vorhaben"><Combo value={s.vorhaben} onChange={(v) => updDayRow("stillstand", s.id, { vorhaben: v })} options={VORHABEN_STILL} placeholder="OST / WEST / Übergreifend" /></Field>
+                    <Field label="Startzeit *"><input type="time" className={inputCls} value={s.start || ""} onChange={(e) => updDayRow("stillstand", s.id, { start: e.target.value })} /></Field>
+                    <Field label="Endzeit *"><input type="time" className={inputCls} value={s.ende || ""} onChange={(e) => updDayRow("stillstand", s.id, { ende: e.target.value })} /></Field>
+                  </div>
+                  <div className="mt-3"><Field label="Begründung *"><input className={inputCls} value={s.grund || ""} onChange={(e) => updDayRow("stillstand", s.id, { grund: e.target.value })} placeholder="Grund des Stillstands" /></Field></div>
+                  <div className="mt-3">
+                    <Label>Betroffenes Personal</Label>
+                    {(s.personal || []).map((r) => (
+                      <div key={r.id} className="mb-2 flex items-center gap-2">
+                        <div className="min-w-0 flex-1"><Combo value={r.rolle} onChange={(v) => updStillSub(s.id, "personal", (s.personal || []).map((x) => x.id === r.id ? { ...x, rolle: v } : x))} options={rollenOpts} placeholder="Rolle" /></div>
+                        <div className="w-20 shrink-0"><input type="number" inputMode="numeric" className={inputCls} value={r.anzahl} onChange={(e) => updStillSub(s.id, "personal", (s.personal || []).map((x) => x.id === r.id ? { ...x, anzahl: e.target.value } : x))} placeholder="Anz." aria-label="Anzahl Personen" /></div>
+                        <button onClick={() => updStillSub(s.id, "personal", (s.personal || []).filter((x) => x.id !== r.id))} className={iconBtn} aria-label="Personal entfernen"><Trash2 size={15} /></button>
                       </div>
+                    ))}
+                    <button onClick={() => updStillSub(s.id, "personal", [...(s.personal || []), { id: uid(), rolle: "", anzahl: "1" }])} className="inline-flex items-center gap-1.5 rounded-sm bg-[#FAD200] px-2.5 py-1.5 text-xs font-bold text-[#0F1E46] hover:bg-[#FCE466]"><Plus size={13} /> Personal hinzufügen</button>
+                  </div>
+                  <div className="mt-3">
+                    <Label>Betroffene Geräte</Label>
+                    {(s.geraete || []).map((r) => { const units = unitsOf(r.typ); return (
+                      <div key={r.id} className="mb-2 flex flex-wrap items-center gap-2">
+                        <div className="min-w-[140px] flex-1"><Combo value={r.typ} onChange={(v) => updStillSub(s.id, "geraete", (s.geraete || []).map((x) => x.id === r.id ? { ...x, typ: v, geraet: "" } : x))} options={geraeteTypOpts} placeholder="Gerätetyp" /></div>
+                        {units.length > 0 && <div className="min-w-[140px] flex-1"><Combo value={r.geraet} onChange={(v) => updStillSub(s.id, "geraete", (s.geraete || []).map((x) => x.id === r.id ? { ...x, geraet: v } : x))} options={units.map((u) => ({ value: u, label: u }))} placeholder="Gerät (genau)" /></div>}
+                        <div className="w-20 shrink-0"><input type="number" inputMode="numeric" className={inputCls} value={r.anzahl} onChange={(e) => updStillSub(s.id, "geraete", (s.geraete || []).map((x) => x.id === r.id ? { ...x, anzahl: e.target.value } : x))} placeholder="Anz." aria-label="Anzahl Geräte" /></div>
+                        <button onClick={() => updStillSub(s.id, "geraete", (s.geraete || []).filter((x) => x.id !== r.id))} className={iconBtn} aria-label="Gerät entfernen"><Trash2 size={15} /></button>
+                      </div>
+                    ); })}
+                    <button onClick={() => updStillSub(s.id, "geraete", [...(s.geraete || []), { id: uid(), typ: "", geraet: "", anzahl: "1" }])} className="inline-flex items-center gap-1.5 rounded-sm bg-[#FAD200] px-2.5 py-1.5 text-xs font-bold text-[#0F1E46] hover:bg-[#FCE466]"><Plus size={13} /> Gerät hinzufügen</button>
+                  </div>
+                  <div className="mt-3">
+                    <Label>Fotos zum Stillstand</Label>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {(day.fotos || []).filter((f) => f.stillId === s.id).map((f) => (
+                        <div key={f.id} className="rounded-sm border border-[#C8D2E6] bg-white p-1.5">
+                          <div className="relative">
+                            {fotoData[f.id] ? <img src={fotoData[f.id]} alt={f.text || f.name} className="h-24 w-full rounded-sm object-cover" /> : <div className="flex h-24 items-center justify-center bg-[#DAE1F0] text-xs text-[#677BA4]">lädt …</div>}
+                            <button onClick={() => delFoto(f.id)} className="absolute right-1 top-1 rounded-sm bg-white p-1 text-[#C62828]" aria-label="Foto löschen"><Trash2 size={13} /></button>
+                          </div>
+                          <input className="mt-1.5 min-h-[34px] w-full rounded-sm border border-[#C8D2E6] px-2 text-xs text-[#0F1E46] outline-none focus:border-[#0F1E46]" value={f.text || ""} onChange={(e) => updDayRow("fotos", f.id, { text: e.target.value })} placeholder="Beschreibung" />
+                        </div>
+                      ))}
                     </div>
-                    <div className="flex shrink-0 gap-1">
-                      <button onClick={() => startEdit(p)} className="rounded-sm border border-[#0F1E46] p-2 text-[#0F1E46] hover:bg-[#DAE1F0] bg-white" aria-label="Bearbeiten"><Pencil size={15} /></button>
-                      <button onClick={() => deletePosition(p.id)} className="rounded-sm p-2 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]" aria-label="Löschen"><Trash2 size={15} /></button>
-                    </div>
+                    <label className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-sm bg-[#FAD200] px-2.5 py-1.5 text-xs font-bold text-[#0F1E46] hover:bg-[#FCE466]"><Camera size={13} /> Foto zum Stillstand
+                      <input type="file" accept="image/*" multiple className="hidden" data-still={s.id} onChange={(e) => { addFotos(e.target.files, s.id); e.target.value = ""; }} />
+                    </label>
                   </div>
                 </div>
-              ))}
+              ); })}
+              <AddBtn onClick={() => addDayRow("stillstand", { sektion: "", vorhaben: "", start: "", ende: "", grund: "", personal: [], geraete: [] })}>Stillstandszeit hinzufügen</AddBtn>
             </div>
-          )}
-        </section>
+          </section>
 
-        <section className="rounded-sm border border-[#C8D2E6] bg-white">
-          <div className="flex items-center gap-2 border-b border-[#C8D2E6] px-4 py-2.5"><Clock size={16} className="text-[#0F1E46]" /><h2 className="text-sm font-bold">Stillstandszeiten</h2><span className="hidden text-xs text-[#677BA4] sm:inline">— ganztägig, optional</span></div>
-          <div className="space-y-3 p-4">
-            {(day.stillstand || []).length === 0 && <p className="text-sm text-[#677BA4]">Keine Stillstandszeiten.</p>}
-            {(day.stillstand || []).map((s, i) => (
-              <div key={s.id} className="rounded-sm border border-[#C8D2E6] bg-[#DAE1F0]/40 p-3">
-                <div className="mb-2 flex items-center justify-between"><span className="text-[11px] font-bold uppercase tracking-wider text-[#677BA4]">Stillstand {i + 1}</span><button onClick={() => delDayRow("stillstand", s.id)} className="rounded-sm p-1 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]"><Trash2 size={16} /></button></div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Sektion"><Combo value={s.sektion} onChange={(v) => updDayRow("stillstand", s.id, { sektion: v })} options={sektOpts} /></Field>
-                  <Field label="Vorhaben"><Combo value={s.vorhaben} onChange={(v) => updDayRow("stillstand", s.id, { vorhaben: v })} options={VORHABEN_STILL} placeholder="OST / WEST / Übergreifend" /></Field>
-                  <Field label="Startzeit *"><input type="time" className={inputCls} value={s.start || ""} onChange={(e) => updDayRow("stillstand", s.id, { start: e.target.value })} /></Field>
-                  <Field label="Endzeit *"><input type="time" className={inputCls} value={s.ende || ""} onChange={(e) => updDayRow("stillstand", s.id, { ende: e.target.value })} /></Field>
-                </div>
-                <div className="mt-3"><Field label="Begründung *"><input className={inputCls} value={s.grund || ""} onChange={(e) => updDayRow("stillstand", s.id, { grund: e.target.value })} placeholder="Grund des Stillstands" /></Field></div>
-              </div>
-            ))}
-            <AddBtn onClick={() => addDayRow("stillstand", { sektion: "", vorhaben: "", start: "", ende: "", grund: "" })}>Stillstandszeit hinzufügen</AddBtn>
-          </div>
-        </section>
-
-        <section className="rounded-sm border border-[#C8D2E6] bg-white">
+          <div className="min-w-0 space-y-4">
+            <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white">
           <div className="flex items-center gap-2 border-b border-[#C8D2E6] px-4 py-2.5"><Info size={16} className="text-[#0F1E46]" /><h2 className="text-sm font-bold">Besondere Vorkommnisse / Besucher</h2></div>
           <div className="space-y-3 p-4">
             {(day.vorkommnisse || []).length === 0 && <p className="text-sm text-[#677BA4]">Keine Einträge.</p>}
@@ -1248,24 +1444,56 @@ export default function App() {
           </div>
         </section>
 
+            <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white">
+              <div className="flex items-center gap-2 border-b border-[#C8D2E6] px-4 py-2.5"><Camera size={16} className="text-[#0F1E46]" /><h2 className="text-sm font-bold">Fotos</h2><span className="text-xs text-[#677BA4]">({(day.fotos || []).filter((f) => !f.stillId).length})</span></div>
+              <div className="p-4">
+                {(day.fotos || []).filter((f) => !f.stillId).length === 0 && <p className="mb-3 text-sm text-[#677BA4]">Noch keine Fotos.</p>}
+                <div className="grid grid-cols-2 gap-3">
+                  {(day.fotos || []).filter((f) => !f.stillId).map((f) => (
+                    <div key={f.id} className="rounded-sm border border-[#C8D2E6] p-2">
+                      <div className="relative">
+                        {fotoData[f.id] ? <img src={fotoData[f.id]} alt={f.text || f.name} className="h-32 w-full rounded-sm object-cover" /> : <div className="flex h-32 items-center justify-center bg-[#DAE1F0] text-xs text-[#677BA4]">lädt …</div>}
+                        <button onClick={() => delFoto(f.id)} className="absolute right-1 top-1 rounded-sm bg-white p-1.5 text-[#C62828]" aria-label="Foto löschen"><Trash2 size={14} /></button>
+                      </div>
+                      <input className="mt-2 min-h-[38px] w-full rounded-sm border border-[#C8D2E6] px-2 text-sm text-[#0F1E46] outline-none focus:border-[#0F1E46]" value={f.text || ""} onChange={(e) => updDayRow("fotos", f.id, { text: e.target.value })} placeholder="Beschreibung" />
+                    </div>
+                  ))}
+                </div>
+                <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-sm bg-[#FAD200] px-3 py-2 text-sm font-bold text-[#0F1E46] hover:bg-[#FCE466]"><Camera size={16} /> Fotos hinzufügen
+                  <input type="file" accept="image/*" multiple className="hidden" data-still="" onChange={(e) => { addFotos(e.target.files); e.target.value = ""; }} />
+                </label>
+              </div>
+            </section>
+          </div>
+        </div>
+
         {hasContent && (
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => { setPreviewData({ day, positions, back: "home" }); setView("preview"); }} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-4 py-2.5 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><FileText size={16} /> Vorschau · PDF · Excel · XML</button>
-            <button onClick={closeDay} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-4 py-2.5 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><CheckCircle2 size={16} /> Tag abschließen</button>
+            <button onClick={() => { setPreviewData({ day, positions, back: "home" }); setView("preview"); }} className="inline-flex items-center gap-2 rounded-sm bg-[#FAD200] px-4 py-2.5 text-sm font-bold text-[#0F1E46] hover:bg-[#FCE466]"><FileText size={16} /> Vorschau · PDF · Excel · XML</button>
+            <button onClick={closeDay} disabled={offen > 0} className={`inline-flex items-center gap-2 rounded-sm px-4 py-2.5 text-sm font-bold ${offen > 0 ? "cursor-not-allowed bg-[#B1BFD8] text-white" : "bg-[#FAD200] text-[#0F1E46] hover:bg-[#FCE466]"}`}><CheckCircle2 size={16} /> Tag abschließen</button>
+            {offen > 0 && <span className="self-center text-xs font-bold text-[#C62828]">Erst {offen} übernommene Leistung(en) prüfen</span>}
           </div>
         )}
       </main>
 
-      <div className="sticky bottom-0 border-t border-[#C8D2E6] bg-white print:hidden">
-        <div className="mx-auto max-w-3xl px-3 py-3 sm:px-4">
-          <div className="flex gap-2">
-            <button onClick={() => setView("overview")} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-4 py-3.5 text-[15px] font-bold text-[#0F1E46] transition hover:bg-[#DAE1F0]"><ClipboardList size={18} /> Übersicht</button>
-            <button onClick={() => startNew()} className="inline-flex flex-1 items-center justify-center gap-2 rounded-sm bg-[#FAD200] px-4 py-3.5 text-[15px] font-bold text-[#0F1E46] transition hover:bg-[#FCE466]"><Plus size={20} /> Neue Leistung</button>
+      <p className="px-4 pb-6 text-center text-[10px] uppercase tracking-[0.3em] text-[#0F1E46]/70">HABAU INFRA | BAUTAGESBERICHT | © 2026</p>
+      {copyOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#0F1E46]/50 sm:items-center sm:p-4" onClick={() => setCopyOpen(false)}>
+          <div className="max-h-[85vh] w-full max-w-lg overflow-auto rounded-sm bg-white p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-start justify-between gap-3"><h3 className="text-base font-bold text-[#0F1E46]">Leistungen aus früherem Tag übernehmen</h3><button onClick={() => setCopyOpen(false)} className="rounded-sm p-1.5 text-[#677BA4] hover:bg-[#DAE1F0]" aria-label="Schließen"><X size={18} /></button></div>
+            <p className="mb-3 text-sm text-[#0F1E46]/70">Die Leistungen werden mit Personal, Geräten und Mengen kopiert und rot markiert. Vor dem Senden jede prüfen.</p>
+            {archive.filter((r) => r.positions.length > 0).length === 0 && <p className="border-l-4 border-[#FAD200] bg-[#DAE1F0] p-3 text-sm text-[#0F1E46]">Noch kein abgeschlossener Tag vorhanden. Frühere Tage erscheinen hier, sobald ein Bericht mit „Tag abschließen“ abgelegt wurde.</p>}
+            <div className="space-y-2">
+              {archive.filter((r) => r.positions.length > 0).map((r) => (
+                <div key={r.id} className="flex items-center gap-3 rounded-sm border border-[#C8D2E6] p-3">
+                  <div className="min-w-0 flex-1"><p className="font-semibold text-[#0F1E46]">{dateDE(r.day.datum)}</p><p className="text-xs text-[#0F1E46]/70">{r.positions.length} Leistung(en): {r.positions.map((p) => p.bas).join(", ")}</p></div>
+                  <button onClick={() => copyFrom(r)} className="shrink-0 rounded-sm bg-[#FAD200] px-3 py-2 text-sm font-bold text-[#0F1E46] hover:bg-[#FCE466]">Übernehmen</button>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-        <p className="px-4 pb-3 text-center text-[10px] uppercase tracking-[0.3em] text-[#0F1E46]/70">HABAU INFRA | BAUTAGESBERICHT | © 2026</p>
-      </div>
-      {basModal && <BasModal meta={basMeta(basModal)} code={basModal} onClose={() => setBasModal(null)} />}
+      )}
     </Shell>
   );
 }
@@ -1308,7 +1536,7 @@ function DateBadge({ iso }) {
 }
 function EditorCard({ icon: Icon, title, count, children }) {
   return (
-    <section className="rounded-sm border border-[#C8D2E6] bg-white">
+    <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white">
       <div className="flex items-center gap-3 border-b border-[#C8D2E6] px-4 py-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-[#0F1E46] text-[#FAD200]"><Icon size={18} /></div>
         <h2 className="flex-1 text-[15px] font-bold text-[#0F1E46]">{title}</h2>
