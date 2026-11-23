@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, Fragment } from "react";
 import {
-  HardHat, Plus, Trash2, Save, FileText, ChevronLeft, ChevronRight, ChevronDown,
+  Plus, Trash2, Save, FileText, ChevronLeft, ChevronRight, ChevronDown,
   Printer, Sun, Cloud, CloudRain, Snowflake, CloudSun, Users, Truck, Search,
   ClipboardList, Gauge, CheckCircle2, X, Layers, Copy, Archive, FolderOpen, Pencil,
   Info, Wand2, FileSpreadsheet, FileCode2, Share2, Settings, ListChecks, RotateCcw,
@@ -313,10 +313,12 @@ async function buildPdfBlob(day, positions, kurz) {
   const { jsPDF } = await import("jspdf");
   const autoTable = (await import("jspdf-autotable")).default;
   const doc = new jsPDF({ unit: "pt", format: "a4" });
+  doc.setTextColor(15, 30, 70);
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
   const M = 40;
   let y = 46;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.text("HABAU INFRA", M, y); y += 12;
   doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.text("BAUTAGESBERICHT", M, y);
   doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.text(String(day.projekt || ""), M, y + 15);
   doc.setFont("helvetica", "bold"); doc.text(dateDE(day.datum), W - M, y, { align: "right" });
@@ -330,7 +332,7 @@ async function buildPdfBlob(day, positions, kurz) {
   ].filter(Boolean);
   hdr.forEach((t, i) => doc.text(t, W - M, y + 15 + i * 13, { align: "right" }));
   y = y + 15 + Math.max(hdr.length * 13, 13) + 8;
-  doc.setDrawColor(15, 23, 42); doc.setLineWidth(1.2); doc.line(M, y, W - M, y); y += 14;
+  doc.setDrawColor(250, 210, 0); doc.setLineWidth(2); doc.line(M, y, W - M, y); y += 14;
 
   autoTable(doc, {
     startY: y,
@@ -340,7 +342,7 @@ async function buildPdfBlob(day, positions, kurz) {
       p.taetigkeit, p.beschreibung || "", num(p.menge) ? `${fmt(num(p.menge))} ${p.einheit}` : "", fmt(phOf(p)), fmt(ghOf(p)),
     ]),
     styles: { fontSize: 8, cellPadding: 3, valign: "top", overflow: "linebreak" },
-    headStyles: { fillColor: [15, 23, 42], textColor: 255, fontSize: 8 },
+    headStyles: { fillColor: [15, 30, 70], textColor: 255, fontSize: 8 },
     columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 42 }, 5: { halign: "right", cellWidth: 50 }, 6: { halign: "right", cellWidth: 32 }, 7: { halign: "right", cellWidth: 32 } },
     margin: { left: M, right: M },
   });
@@ -358,7 +360,7 @@ async function buildPdfBlob(day, positions, kurz) {
       body: Array.from({ length: Math.max(persRows.length, gerRows.length) }).map((_, r) => [
         persRows[r]?.[0] || "", persRows[r]?.[1] || "", persRows[r]?.[2] || "", gerRows[r]?.[0] || "", gerRows[r]?.[1] || "", gerRows[r]?.[2] || "",
       ]),
-      styles: { fontSize: 8, cellPadding: 2 }, headStyles: { fillColor: [241, 245, 249], textColor: [51, 65, 85], fontSize: 8 }, margin: { left: M, right: M },
+      styles: { fontSize: 8, cellPadding: 2 }, headStyles: { fillColor: [218, 225, 240], textColor: [15, 30, 70], fontSize: 8 }, margin: { left: M, right: M },
     });
     y = doc.lastAutoTable.finalY + 10;
   });
@@ -370,7 +372,7 @@ async function buildPdfBlob(day, positions, kurz) {
     autoTable(doc, {
       startY: y, head: [["Nr", "Sektion", "Vorhaben", "Start", "Ende", "Begründung"]],
       body: still.map((s, i) => [i + 1, s.sektion, s.vorhaben, s.start, s.ende, s.grund]),
-      styles: { fontSize: 8, cellPadding: 3, overflow: "linebreak" }, headStyles: { fillColor: [15, 23, 42], textColor: 255 }, margin: { left: M, right: M },
+      styles: { fontSize: 8, cellPadding: 3, overflow: "linebreak" }, headStyles: { fillColor: [15, 30, 70], textColor: 255 }, margin: { left: M, right: M },
     });
     y = doc.lastAutoTable.finalY + 10;
   }
@@ -426,11 +428,11 @@ const emptyDraft = () => ({
 
 /* ===================== KLEINE UI-BAUSTEINE ===================== */
 const Label = ({ children, hint }) => (
-  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-    {children}{hint && <span className="ml-1 normal-case tracking-normal text-slate-400">{hint}</span>}
+  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[#0F1E46]/70">
+    {children}{hint && <span className="ml-1 normal-case tracking-normal text-[#677BA4]">{hint}</span>}
   </label>
 );
-const inputCls = "w-full min-h-[46px] rounded-lg border border-slate-300 bg-white px-3 text-[15px] text-slate-900 placeholder-slate-400 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/40";
+const inputCls = "w-full min-h-[46px] rounded-sm border border-[#C8D2E6] bg-white px-3 text-[15px] text-[#0F1E46] placeholder-[#96A8C7] outline-none transition focus:border-[#0F1E46] focus:ring-1 focus:ring-[#0F1E46]";
 
 function Combo({ value, onChange, options, placeholder = "– wählen –" }) {
   const [open, setOpen] = useState(false);
@@ -442,30 +444,30 @@ function Combo({ value, onChange, options, placeholder = "– wählen –" }) {
     <div className="relative">
       <button type="button" onClick={() => { setOpen((v) => !v); setQ(""); }}
         className={`${inputCls} flex items-center justify-between gap-2 text-left`}>
-        <span className={`truncate ${sel ? "text-slate-900" : "text-slate-400"}`}>{sel ? sel.label : placeholder}</span>
-        <ChevronDown size={16} className="shrink-0 text-slate-400" />
+        <span className={`truncate ${sel ? "text-[#0F1E46]" : "text-[#677BA4]"}`}>{sel ? sel.label : placeholder}</span>
+        <ChevronDown size={16} className="shrink-0 text-[#677BA4]" />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
-            <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
-              <Search size={15} className="text-slate-400" />
+          <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-sm border border-[#C8D2E6] bg-white">
+            <div className="flex items-center gap-2 border-b border-[#C8D2E6] px-3 py-2">
+              <Search size={15} className="text-[#677BA4]" />
               <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Suchen…" className="w-full bg-transparent text-sm outline-none" />
             </div>
             <div className="max-h-60 overflow-auto py-1">
-              {filtered.length === 0 && <div className="px-3 py-3 text-sm text-slate-400">Keine Treffer</div>}
+              {filtered.length === 0 && <div className="px-3 py-3 text-sm text-[#677BA4]">Keine Treffer</div>}
               {filtered.map((o, i) => {
                 const showGroup = o.group && (i === 0 || filtered[i - 1].group !== o.group);
                 return (
                   <Fragment key={o.value + i}>
-                    {showGroup && <div className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">{o.group}</div>}
+                    {showGroup && <div className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-[#677BA4]">{o.group}</div>}
                     <button type="button" onClick={() => { onChange(o.value); setOpen(false); setQ(""); }}
-                      className={`flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-amber-50 ${o.value === value ? "bg-amber-50 font-semibold text-amber-800" : "text-slate-700"}`}>
-                      {o.code !== undefined && <span className="w-12 shrink-0 pt-0.5 font-mono text-xs text-slate-500">{o.code}</span>}
+                      className={`flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-[#DAE1F0] ${o.value === value ? "bg-[#DAE1F0] font-semibold text-[#0F1E46]" : "text-[#0F1E46]"}`}>
+                      {o.code !== undefined && <span className="w-12 shrink-0 pt-0.5 tabular-nums text-xs text-[#0F1E46]/70">{o.code}</span>}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate">{o.labelShort ?? o.label}</span>
-                        {o.sub && <span className="mt-0.5 block text-xs font-normal leading-snug text-slate-400 line-clamp-2">{o.sub}…</span>}
+                        {o.sub && <span className="mt-0.5 block text-xs font-normal leading-snug text-[#677BA4] line-clamp-2">{o.sub}…</span>}
                       </span>
                     </button>
                   </Fragment>
@@ -482,12 +484,13 @@ const Field = ({ label, hint, children }) => (<div><Label hint={hint}>{label}</L
 
 function TopBar({ title, subtitle, left, right }) {
   return (
-    <header className="sticky top-0 z-10 border-b border-black/20 bg-slate-900 text-white print:hidden">
+    <header className="sticky top-0 z-10 border-b-4 border-[#FAD200] bg-[#0F1E46] text-white print:hidden">
       <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
-        {left || (<div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500 text-slate-900"><HardHat size={20} /></div>)}
+        {left}
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-base font-black leading-none tracking-tight">{title}</h1>
-          {subtitle && <p className="truncate text-[11px] text-slate-400">{subtitle}</p>}
+          <p className="text-[11px] font-bold leading-none tracking-wide text-white">HABAU INFRA</p>
+          <h1 className="mt-1 truncate text-base font-bold leading-none tracking-tight text-white">{title}</h1>
+          {subtitle && <p className="mt-1 truncate text-[11px] text-white/70">{subtitle}</p>}
         </div>
         {right}
       </div>
@@ -495,19 +498,19 @@ function TopBar({ title, subtitle, left, right }) {
   );
 }
 const Shell = ({ children }) => (
-  <div className="min-h-screen bg-slate-100 text-slate-900" style={{ fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>{children}</div>
+  <div className="min-h-screen bg-white text-[#0F1E46]" style={{ fontFamily: 'Arial, "Helvetica Neue", Helvetica, sans-serif' }}>{children}</div>
 );
 const RowShell = ({ index, onRemove, children }) => (
-  <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+  <div className="rounded-sm border border-[#C8D2E6] bg-[#DAE1F0]/40 p-3">
     <div className="mb-2 flex items-center justify-between">
-      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Zeile {index + 1}</span>
-      <button onClick={onRemove} className="rounded p-1 text-slate-400 transition hover:bg-red-50 hover:text-red-600" aria-label="Entfernen"><Trash2 size={16} /></button>
+      <span className="text-[11px] font-bold uppercase tracking-wider text-[#677BA4]">Zeile {index + 1}</span>
+      <button onClick={onRemove} className="rounded-sm p-1 text-[#677BA4] transition hover:bg-[#DAE1F0] hover:text-[#C62828]" aria-label="Entfernen"><Trash2 size={16} /></button>
     </div>
     {children}
   </div>
 );
 const AddBtn = ({ onClick, children }) => (
-  <button onClick={onClick} className="mt-3 inline-flex items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-amber-500 hover:bg-amber-50 hover:text-amber-700"><Plus size={16} /> {children}</button>
+  <button onClick={onClick} className="mt-3 inline-flex items-center gap-2 rounded-sm border border-dashed border-[#96A8C7] px-3 py-2 text-sm font-semibold text-[#0F1E46] transition hover:bg-[#DAE1F0]"><Plus size={16} /> {children}</button>
 );
 
 /* Einfacher Editor für eine Liste aus Texten */
@@ -520,7 +523,7 @@ function StringListEditor({ items, onChange, placeholder }) {
       {items.map((it, i) => (
         <div key={i} className="flex items-center gap-2">
           <input className={inputCls} value={it} placeholder={placeholder} onChange={(e) => setAt(i, e.target.value)} />
-          <button onClick={() => del(i)} className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Löschen"><Trash2 size={16} /></button>
+          <button onClick={() => del(i)} className="shrink-0 rounded-sm p-2 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]" aria-label="Löschen"><Trash2 size={16} /></button>
         </div>
       ))}
       <AddBtn onClick={add}>Eintrag hinzufügen</AddBtn>
@@ -657,21 +660,21 @@ export default function App() {
     return (
       <Shell>
         <TopBar title="Listen verwalten" subtitle={SB_ON ? (session ? `Admin: ${session.email}` : "Admin-Anmeldung erforderlich") : "Lokaler Modus"}
-          left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white hover:bg-white/20"><ChevronLeft size={18} /></button>}
+          left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-sm bg-white/10 text-white hover:bg-white/20"><ChevronLeft size={18} /></button>}
           right={SB_ON
-            ? (session ? <button onClick={doLogout} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-300 hover:bg-white/10"><LogOut size={15} /> <span className="hidden sm:inline">Abmelden</span></button> : null)
-            : <button onClick={resetLists} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-300 hover:bg-white/10"><RotateCcw size={15} /> <span className="hidden sm:inline">Standard</span></button>} />
+            ? (session ? <button onClick={doLogout} className="inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/10"><LogOut size={15} /> <span className="hidden sm:inline">Abmelden</span></button> : null)
+            : <button onClick={resetLists} className="inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/10"><RotateCcw size={15} /> <span className="hidden sm:inline">Standard</span></button>} />
         <main className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-4 sm:py-6">
           {needLogin ? (
             <LoginCard onSubmit={async (email, pw) => { const s = await sbLogin(email, pw); setSession(s); persistSession(s); }} />
           ) : (
             <>
-              <p className={`rounded-lg border px-3 py-2 text-sm ${SB_ON ? "border-emerald-200 bg-emerald-50/70 text-emerald-800" : "border-sky-200 bg-sky-50/70 text-slate-600"}`}>
+              <p className={`border-l-4 border-[#FAD200] bg-[#DAE1F0] px-3 py-2 text-sm ${SB_ON ? "text-[#2E7D32]" : "text-[#0F1E46]/70"}`}>
                 {SB_ON
                   ? <><ShieldCheck size={14} className="mr-1 inline" />Mit Supabase verbunden – Änderungen gelten sofort für alle Nutzer.</>
                   : "Lokaler Modus (nur dieses Gerät). Trage in der App SUPABASE_URL + KEY ein und veröffentliche sie, damit Änderungen für alle gelten."}
               </p>
-              {listsErr && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{listsErr}</p>}
+              {listsErr && <p className="rounded-sm border border-[#C62828] bg-white px-3 py-2 text-sm text-[#C62828]">{listsErr}</p>}
 
               <EditorCard icon={ListChecks} title="Sektionen" count={lists.sektionen.length}>
                 <StringListEditor items={lists.sektionen} onChange={(v) => setListKey("sektionen", v)} placeholder="z. B. Sektion 23" />
@@ -684,7 +687,7 @@ export default function App() {
               </EditorCard>
               <BasEditor bas={lists.bas} onChange={(v) => setListKey("bas", v)} />
               <GeraeteEditor geraete={lists.geraete} onChange={(v) => setListKey("geraete", v)} />
-              {SB_ON && session && <button onClick={resetLists} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"><RotateCcw size={15} /> Auf Standard zurücksetzen</button>}
+              {SB_ON && session && <button onClick={resetLists} className="inline-flex items-center gap-1.5 rounded-sm border border-[#0F1E46] bg-white px-3 py-2 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><RotateCcw size={15} /> Auf Standard zurücksetzen</button>}
             </>
           )}
         </main>
@@ -697,13 +700,13 @@ export default function App() {
     return (
       <Shell>
         <TopBar title={editingId ? "Leistung bearbeiten" : "Neue Leistung"} subtitle={`Schritt ${step + 1}/${STEPS.length} · ${STEPS[step]}`}
-          left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white hover:bg-white/20" aria-label="Abbrechen"><X size={18} /></button>} />
+          left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-sm bg-white/10 text-white hover:bg-white/20" aria-label="Abbrechen"><X size={18} /></button>} />
         <div className="mx-auto max-w-3xl px-4 pt-4">
           <div className="flex items-center gap-1.5">
             {STEPS.map((s, i) => (
               <button key={s} onClick={() => canGoTo(i) && setStep(i)} disabled={!canGoTo(i)} className="group flex-1 text-left">
-                <div className={`h-1.5 rounded-full transition ${i <= step ? "bg-amber-500" : "bg-slate-200"}`} />
-                <span className={`mt-1 hidden text-[10px] font-semibold uppercase tracking-wider sm:block ${i === step ? "text-amber-700" : i < step ? "text-slate-500" : "text-slate-300"}`}>{s}</span>
+                <div className={`h-1.5 rounded-sm transition ${i <= step ? "bg-[#FAD200]" : "bg-[#C8D2E6]"}`} />
+                <span className={`mt-1 hidden text-[10px] font-semibold uppercase tracking-wider sm:block ${i === step ? "text-[#0F1E46]" : i < step ? "text-[#0F1E46]/70" : "text-[#677BA4]"}`}>{s}</span>
               </button>
             ))}
           </div>
@@ -711,19 +714,19 @@ export default function App() {
 
         <main className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-4">
           {step === 0 && (
-            <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="space-y-4 rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
               <Field label="Sektion"><Combo value={draft.sektion} onChange={(v) => setD("sektion", v)} options={sektOpts} /></Field>
               {(() => { const si = sektInfo(draft.sektion); return si ? (
-                <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-sm">
+                <div className="border-l-4 border-[#FAD200] bg-[#DAE1F0] p-3 text-sm">
                   <div className="flex flex-wrap gap-x-5 gap-y-1">
-                    <span className="text-slate-500">km <b className="text-slate-800">{si.kmVon} – {si.kmBis}</b></span>
-                    <span className="text-slate-500">Segment <b className="text-slate-800">{si.segment}</b></span>
-                    <span className="text-slate-500">Bauabschnitt <b className="text-slate-800">{si.ba}</b></span>
+                    <span className="text-[#0F1E46]/70">km <b className="text-[#0F1E46]">{si.kmVon} – {si.kmBis}</b></span>
+                    <span className="text-[#0F1E46]/70">Segment <b className="text-[#0F1E46]">{si.segment}</b></span>
+                    <span className="text-[#0F1E46]/70">Bauabschnitt <b className="text-[#0F1E46]">{si.ba}</b></span>
                   </div>
                   {si.bauwerke.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Bauwerke:</span>
-                      {si.bauwerke.map((b, i) => <span key={i} className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-700">{b}</span>)}
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-[#677BA4]">Bauwerke:</span>
+                      {si.bauwerke.map((b, i) => <span key={i} className="rounded-sm border border-[#C8D2E6] bg-white px-1.5 py-0.5 text-xs text-[#0F1E46]">{b}</span>)}
                     </div>
                   )}
                 </div>
@@ -733,7 +736,7 @@ export default function App() {
                   <Label>Vorhabenübergreifend</Label>
                   <div className="flex gap-2">
                     {["Ja", "Nein"].map((o) => (
-                      <button key={o} onClick={() => setD("vorhabenUeb", o)} className={`min-h-[46px] flex-1 rounded-lg border px-3 text-sm font-semibold transition ${draft.vorhabenUeb === o ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`}>{o}</button>
+                      <button key={o} onClick={() => setD("vorhabenUeb", o)} className={`min-h-[46px] flex-1 rounded-sm border px-3 text-sm font-semibold transition ${draft.vorhabenUeb === o ? "border-[#0F1E46] bg-[#DAE1F0] text-[#0F1E46]" : "border-[#C8D2E6] bg-white text-[#0F1E46]/70 hover:bg-[#DAE1F0]"}`}>{o}</button>
                     ))}
                   </div>
                 </div>
@@ -741,42 +744,42 @@ export default function App() {
                   <Label>Vorhaben</Label>
                   <div className="flex gap-2">
                     {VORHABEN_OPTS.map((o) => (
-                      <button key={o.value} onClick={() => setD("vorhaben", o.value)} className={`min-h-[46px] flex-1 rounded-lg border px-2 text-sm font-semibold transition ${draft.vorhaben === o.value ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`}>{o.label}</button>
+                      <button key={o.value} onClick={() => setD("vorhaben", o.value)} className={`min-h-[46px] flex-1 rounded-sm border px-2 text-sm font-semibold transition ${draft.vorhaben === o.value ? "border-[#0F1E46] bg-[#DAE1F0] text-[#0F1E46]" : "border-[#C8D2E6] bg-white text-[#0F1E46]/70 hover:bg-[#DAE1F0]"}`}>{o.label}</button>
                     ))}
                   </div>
                 </div>
               </div>
-              <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-3">
-                <p className="mb-2 text-xs font-semibold text-slate-700">Vorhaben-Auswahl <span className="font-normal text-slate-500">· rechte Seite = OST = V4 · linke Seite = WEST = V3</span></p>
-                <img src={VORHABEN_IMG} alt="Vorhaben Querschnitt – Graben, Schutzstreifen, HGÜ 525 kV" className="w-full rounded border border-slate-200 bg-white" />
+              <div className="border-l-4 border-[#FAD200] bg-[#DAE1F0] p-3">
+                <p className="mb-2 text-xs font-semibold text-[#0F1E46]">Vorhaben-Auswahl <span className="font-normal text-[#0F1E46]/70">· rechte Seite = OST = V4 · linke Seite = WEST = V3</span></p>
+                <img src={VORHABEN_IMG} alt="Vorhaben Querschnitt – Graben, Schutzstreifen, HGÜ 525 kV" className="w-full rounded-sm border border-[#C8D2E6] bg-white" />
               </div>
               <Field label="Tätigkeit"><Combo value={draft.taetigkeit} onChange={(v) => setD("taetigkeit", v)} options={taetOpts} /></Field>
               <div>
                 <div className="mb-1 flex items-center justify-between">
                   <Label hint="(Leistungs-/Kostenschlüssel)">BAS</Label>
-                  {draft.bas && <button onClick={() => setBasModal(draft.bas)} className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:underline"><Info size={13} /> Was ist enthalten?</button>}
+                  {draft.bas && <button onClick={() => setBasModal(draft.bas)} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0F1E46] underline"><Info size={13} /> Was ist enthalten?</button>}
                 </div>
                 <Combo value={draft.bas} onChange={(v) => setD("bas", v)} options={basOpts} />
               </div>
               {draft.bas && (() => { const m = basMeta(draft.bas); return (m.lv || m.desc || m.wann) ? (
-                <div className="rounded-lg border border-sky-200 bg-sky-50/70 p-3">
+                <div className="border-l-4 border-[#FAD200] bg-[#DAE1F0] p-3">
                   <div className="flex items-start gap-2">
-                    <Info size={15} className="mt-0.5 shrink-0 text-sky-700" />
+                    <Info size={15} className="mt-0.5 shrink-0 text-[#0F1E46]" />
                     <div className="min-w-0 flex-1">
-                      {m.lv && <p className="text-sm"><span className="font-semibold text-slate-800">LV-Leistung: </span><span className="text-slate-700">{m.lv}</span>{m.me && <span className="ml-1.5 rounded bg-sky-100 px-1.5 py-0.5 font-mono text-xs text-sky-800">{m.me}</span>}</p>}
-                      {m.desc && <p className="text-sm text-slate-700"><span className="font-semibold text-slate-800">Was steckt drin: </span>{m.desc}</p>}
-                      {m.wann && <p className="mt-1 text-sm text-slate-600"><span className="font-semibold text-slate-800">Wann wählen: </span>{m.wann}</p>}
-                      <button onClick={applyBasInfo} className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:underline"><Wand2 size={12} /> Beschreibung & Einheit übernehmen</button>
+                      {m.lv && <p className="text-sm"><span className="font-semibold text-[#0F1E46]">LV-Leistung: </span><span className="text-[#0F1E46]">{m.lv}</span>{m.me && <span className="ml-1.5 rounded-sm border border-[#C8D2E6] bg-white px-1.5 py-0.5 text-xs tabular-nums text-[#0F1E46]">{m.me}</span>}</p>}
+                      {m.desc && <p className="text-sm text-[#0F1E46]"><span className="font-semibold text-[#0F1E46]">Was steckt drin: </span>{m.desc}</p>}
+                      {m.wann && <p className="mt-1 text-sm text-[#0F1E46]/70"><span className="font-semibold text-[#0F1E46]">Wann wählen: </span>{m.wann}</p>}
+                      <button onClick={applyBasInfo} className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-[#0F1E46] underline"><Wand2 size={12} /> Beschreibung & Einheit übernehmen</button>
                     </div>
                   </div>
                 </div>
               ) : null; })()}
-              {!canNext && <p className="text-xs text-amber-700">Bitte Sektion, Vorhaben (oder „Vorhabenübergreifend: Ja"), Tätigkeit und BAS auswählen.</p>}
+              {!canNext && <p className="text-xs text-[#C62828]">Bitte Sektion, Vorhaben (oder „Vorhabenübergreifend: Ja"), Tätigkeit und BAS auswählen.</p>}
             </div>
           )}
 
           {step === 1 && (
-            <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="space-y-4 rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
               <Field label="Beschreibung (Detail)">
                 <textarea rows={4} className={`${inputCls} min-h-[110px] py-2`} value={draft.beschreibung} onChange={(e) => setD("beschreibung", e.target.value)} placeholder="Was wurde konkret ausgeführt? Ort, Abschnitt, Besonderheiten, Behinderungen …" />
               </Field>
@@ -784,15 +787,15 @@ export default function App() {
                 <Field label="Menge"><input type="number" inputMode="decimal" className={inputCls} value={draft.menge} onChange={(e) => setD("menge", e.target.value)} placeholder="0" /></Field>
                 <Field label="Einheit"><Combo value={draft.einheit} onChange={(v) => setD("einheit", v)} options={EINHEITEN.map((u) => ({ value: u, label: u }))} placeholder="–" /></Field>
               </div>
-              {!canNext && <p className="text-xs text-amber-700">Beschreibung, Menge (&gt; 0) und Einheit ausfüllen.</p>}
+              {!canNext && <p className="text-xs text-[#C62828]">Beschreibung, Menge (&gt; 0) und Einheit ausfüllen.</p>}
             </div>
           )}
 
           {step === 2 && (
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
               <div className="mb-3 flex items-center justify-between">
-                <p className="text-sm text-slate-500">Wer hat an dieser Leistung gearbeitet?</p>
-                {positions[0]?.personal?.some((x) => x.rolle) && <button onClick={() => copyLast("personal")} className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:underline"><Copy size={13} /> Letzte übernehmen</button>}
+                <p className="text-sm text-[#0F1E46]/70">Wer hat an dieser Leistung gearbeitet?</p>
+                {positions[0]?.personal?.some((x) => x.rolle) && <button onClick={() => copyLast("personal")} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0F1E46] underline"><Copy size={13} /> Letzte übernehmen</button>}
               </div>
               <div className="space-y-3">
                 {draft.personal.map((p, i) => (
@@ -802,20 +805,20 @@ export default function App() {
                       <Field label="Anzahl Personen"><input type="number" inputMode="numeric" className={inputCls} value={p.anzahl} onChange={(e) => updRow("personal", p.id, { anzahl: e.target.value })} placeholder="1" /></Field>
                       <Field label="Stunden / Person"><input type="number" inputMode="decimal" className={inputCls} value={p.stunden} onChange={(e) => updRow("personal", p.id, { stunden: e.target.value })} placeholder="0" /></Field>
                     </div>
-                    {num(p.anzahl) > 0 && num(p.stunden) > 0 && <p className="mt-2 text-right text-xs text-slate-500">= <span className="font-mono font-semibold text-slate-700">{fmt(num(p.anzahl) * num(p.stunden))}</span> Pers.-Std.</p>}
+                    {num(p.anzahl) > 0 && num(p.stunden) > 0 && <p className="mt-2 text-right text-xs text-[#0F1E46]/70">= <span className="tabular-nums font-semibold text-[#0F1E46]">{fmt(num(p.anzahl) * num(p.stunden))}</span> Pers.-Std.</p>}
                   </RowShell>
                 ))}
               </div>
               <AddBtn onClick={() => addRow("personal", { rolle: "", anzahl: "", stunden: "" })}>Rolle hinzufügen</AddBtn>
-              {!canNext && <p className="mt-2 text-xs text-amber-700">Mindestens eine Person mit Rolle, Anzahl (&gt; 0) und Stunden (&gt; 0). Angefangene Zeilen bitte vervollständigen oder entfernen.</p>}
+              {!canNext && <p className="mt-2 text-xs text-[#C62828]">Mindestens eine Person mit Rolle, Anzahl (&gt; 0) und Stunden (&gt; 0). Angefangene Zeilen bitte vervollständigen oder entfernen.</p>}
             </div>
           )}
 
           {step === 3 && (
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
               <div className="mb-3 flex items-center justify-between">
-                <p className="text-sm text-slate-500">Welche Geräte waren im Einsatz?</p>
-                {positions[0]?.geraete?.some((x) => x.typ) && <button onClick={() => copyLast("geraete")} className="inline-flex items-center gap-1 text-xs font-semibold text-sky-700 hover:underline"><Copy size={13} /> Letzte übernehmen</button>}
+                <p className="text-sm text-[#0F1E46]/70">Welche Geräte waren im Einsatz?</p>
+                {positions[0]?.geraete?.some((x) => x.typ) && <button onClick={() => copyLast("geraete")} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0F1E46] underline"><Copy size={13} /> Letzte übernehmen</button>}
               </div>
               <div className="space-y-3">
                 {draft.geraete.map((g, i) => {
@@ -837,21 +840,21 @@ export default function App() {
                 })}
               </div>
               <AddBtn onClick={() => addRow("geraete", { typ: "", geraet: "", anzahl: "1", stunden: "" })}>Gerät hinzufügen</AddBtn>
-              {gerIncomplete && <p className="mt-2 text-xs text-amber-700">Bei gewähltem Gerät: genaues Gerät (falls hinterlegt), Anzahl (&gt; 0) und Betriebsstunden (&gt; 0) ausfüllen – oder die Zeile entfernen. Geräte sind sonst optional.</p>}
+              {gerIncomplete && <p className="mt-2 text-xs text-[#C62828]">Bei gewähltem Gerät: genaues Gerät (falls hinterlegt), Anzahl (&gt; 0) und Betriebsstunden (&gt; 0) ausfüllen – oder die Zeile entfernen. Geräte sind sonst optional.</p>}
             </div>
           )}
 
           {step === 4 && (
             <div className="space-y-3">
-              <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3"><Layers size={16} className="text-amber-600" /><h3 className="text-sm font-bold">Leistung</h3></div>
+              <div className="rounded-sm border border-[#C8D2E6] bg-white">
+                <div className="flex items-center gap-2 border-b border-[#C8D2E6] px-4 py-3"><Layers size={16} className="text-[#0F1E46]" /><h3 className="text-sm font-bold">Leistung</h3></div>
                 <div className="space-y-1.5 px-4 py-3 text-sm">
                   <SumLine k="Sektion" v={draft.sektion || "—"} />
                   <SumLine k="Vorhaben" v={`${draft.vorhaben || "—"}${draft.vorhabenUeb === "Ja" ? " · übergreifend" : ""}`} />
                   <SumLine k="Tätigkeit" v={draft.taetigkeit || "—"} />
                   <SumLine k="BAS" v={draft.bas ? `${draft.bas} – ${basName(draft.bas)}` : "—"} />
                   <SumLine k="Menge" v={num(draft.menge) ? `${fmt(num(draft.menge))} ${draft.einheit}` : "—"} />
-                  {draft.beschreibung && <p className="pt-1 text-slate-600">{draft.beschreibung}</p>}
+                  {draft.beschreibung && <p className="pt-1 text-[#0F1E46]/70">{draft.beschreibung}</p>}
                 </div>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -862,15 +865,15 @@ export default function App() {
           )}
         </main>
 
-        <div className="sticky bottom-0 border-t border-slate-200 bg-slate-100/95 backdrop-blur print:hidden">
+        <div className="sticky bottom-0 border-t border-[#C8D2E6] bg-white print:hidden">
           <div className="mx-auto flex max-w-3xl items-center gap-2 px-3 py-3 sm:px-4">
             {step > 0
-              ? <button onClick={() => setStep((s) => s - 1)} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"><ChevronLeft size={16} /> Zurück</button>
-              : <button onClick={() => setView("home")} className="rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Abbrechen</button>}
+              ? <button onClick={() => setStep((s) => s - 1)} className="inline-flex items-center gap-1 rounded-sm border border-[#0F1E46] bg-white px-4 py-3 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><ChevronLeft size={16} /> Zurück</button>
+              : <button onClick={() => setView("home")} className="rounded-sm border border-[#0F1E46] bg-white px-4 py-3 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]">Abbrechen</button>}
             <div className="flex-1" />
             {step < STEPS.length - 1
-              ? <button onClick={() => canNext && setStep((s) => s + 1)} disabled={!canNext} className={`inline-flex items-center gap-1 rounded-lg px-5 py-3 text-sm font-bold text-white transition ${canNext ? "bg-slate-900 hover:bg-slate-800" : "cursor-not-allowed bg-slate-300"}`}>Weiter <ChevronRight size={16} /></button>
-              : <button onClick={savePosition} className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-5 py-3 text-sm font-bold text-white hover:bg-amber-700"><Save size={18} /> Position speichern</button>}
+              ? <button onClick={() => canNext && setStep((s) => s + 1)} disabled={!canNext} className={`inline-flex items-center gap-1 rounded-sm px-5 py-3 text-sm font-bold text-white transition ${canNext ? "bg-[#0F1E46] hover:bg-[#0F1E46]/90" : "cursor-not-allowed bg-[#B1BFD8]"}`}>Weiter <ChevronRight size={16} /></button>
+              : <button onClick={savePosition} className="inline-flex items-center gap-2 rounded-sm bg-[#FAD200] px-5 py-3 text-sm font-bold text-[#0F1E46] hover:bg-[#FCE466]"><Save size={18} /> Position speichern</button>}
           </div>
         </div>
         {basModal && <BasModal meta={basMeta(basModal)} code={basModal} onClose={() => setBasModal(null)} />}
@@ -883,17 +886,17 @@ export default function App() {
     return (
       <Shell>
         <TopBar title="Frühere Berichte" subtitle={`${archive.length} abgeschlossen`}
-          left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white hover:bg-white/20"><ChevronLeft size={18} /></button>} />
+          left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-sm bg-white/10 text-white hover:bg-white/20"><ChevronLeft size={18} /></button>} />
         <main className="mx-auto max-w-3xl space-y-2 px-3 py-4 sm:px-4 sm:py-6">
           {archive.length === 0 ? (
-            <div className="rounded-xl border border-slate-200 bg-white py-12 text-center text-slate-500"><Archive className="mx-auto mb-3 text-slate-300" size={40} /><p>Noch keine abgeschlossenen Berichte.</p></div>
+            <div className="rounded-sm border border-[#C8D2E6] bg-white py-12 text-center text-[#0F1E46]/70"><Archive className="mx-auto mb-3 text-[#677BA4]" size={40} /><p>Noch keine abgeschlossenen Berichte.</p></div>
           ) : archive.map((rec) => (
-            <div key={rec.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+            <div key={rec.id} className="flex flex-wrap items-center gap-3 rounded-sm border border-[#C8D2E6] bg-white p-3">
               <DateBadge iso={rec.day.datum} />
-              <div className="min-w-0 flex-1"><p className="truncate font-semibold">{rec.day.projekt || "—"}</p><p className="text-xs text-slate-500">{dateDE(rec.day.datum)} · {rec.positions.length} Position(en)</p></div>
-              <button onClick={() => { setPreviewData({ day: rec.day, positions: rec.positions }); setView("preview"); }} className="rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-slate-50" aria-label="Vorschau"><FileText size={15} /></button>
-              <button onClick={() => loadArchived(rec)} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FolderOpen size={15} /> Öffnen</button>
-              <button onClick={() => deleteArchived(rec.id)} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={16} /></button>
+              <div className="min-w-0 flex-1"><p className="truncate font-semibold">{rec.day.projekt || "—"}</p><p className="text-xs text-[#0F1E46]/70">{dateDE(rec.day.datum)} · {rec.positions.length} Position(en)</p></div>
+              <button onClick={() => { setPreviewData({ day: rec.day, positions: rec.positions }); setView("preview"); }} className="rounded-sm border border-[#0F1E46] p-2 text-[#0F1E46] hover:bg-[#DAE1F0] bg-white" aria-label="Vorschau"><FileText size={15} /></button>
+              <button onClick={() => loadArchived(rec)} className="inline-flex items-center gap-1 rounded-sm border border-[#0F1E46] px-3 py-2 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0] bg-white"><FolderOpen size={15} /> Öffnen</button>
+              <button onClick={() => deleteArchived(rec.id)} className="rounded-sm p-2 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]"><Trash2 size={16} /></button>
             </div>
           ))}
         </main>
@@ -910,69 +913,74 @@ export default function App() {
       <Shell>
         <div className="mx-auto max-w-3xl px-3 py-3 sm:px-4">
           <div className="mb-3 flex flex-wrap items-center gap-2 print:hidden">
-            <button onClick={() => setView(previewData.back || "home")} className="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-slate-900"><ChevronLeft size={16} /> Zurück</button>
+            <button onClick={() => setView(previewData.back || "home")} className="inline-flex items-center gap-1 text-sm font-semibold text-[#0F1E46]/70 hover:text-[#0F1E46]"><ChevronLeft size={16} /> Zurück</button>
             <div className="flex-1" />
-            <button onClick={() => exportExcel(d, ps, basName)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FileSpreadsheet size={16} /> Excel</button>
-            <button onClick={() => exportXML(d, ps, basName)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FileCode2 size={16} /> XML</button>
-            <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Printer size={16} /> PDF</button>
-            <button onClick={() => shareReport(d, ps, basName)} className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"><Share2 size={16} /> Senden</button>
+            <button onClick={() => exportExcel(d, ps, basName)} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-3 py-2 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><FileSpreadsheet size={16} /> Excel</button>
+            <button onClick={() => exportXML(d, ps, basName)} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-3 py-2 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><FileCode2 size={16} /> XML</button>
+            <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-3 py-2 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><Printer size={16} /> PDF</button>
+            <button onClick={() => shareReport(d, ps, basName)} className="inline-flex items-center gap-2 rounded-sm bg-[#FAD200] px-4 py-2 text-sm font-bold text-[#0F1E46] hover:bg-[#FCE466]"><Share2 size={16} /> Senden</button>
           </div>
-          <div className="rounded-xl border border-slate-300 bg-white p-6 shadow-sm sm:p-8 print:border-0 print:p-0">
-            <div className="mb-5 flex items-start justify-between border-b-2 border-slate-900 pb-4">
-              <div><h1 className="text-2xl font-black tracking-tight">BAUTAGESBERICHT</h1><p className="text-sm text-slate-600">{d.projekt || "—"}</p></div>
-              <div className="text-right text-sm"><p className="font-bold">{dateDE(d.datum)}</p><p className="text-slate-600">{W?.label} · {d.tempMin || "–"}° / {d.tempMax || "–"}° C</p>{(d.arbeitStart || d.arbeitEnde) && <p className="text-slate-600">Arbeitszeit: {d.arbeitStart || "–"}–{d.arbeitEnde || "–"}</p>}{d.gewerk && <p className="text-slate-600">Gewerk: {d.gewerk}</p>}{d.bauleiter && <p className="text-slate-600">Bauleiter: {d.bauleiter}</p>}</div>
+          <div className="rounded-sm border border-[#C8D2E6] bg-white p-6 sm:p-8 print:border-0 print:p-0">
+            <div className="mb-5 flex flex-col gap-2 border-b-4 border-[#FAD200] pb-4 sm:flex-row sm:items-start sm:justify-between">
+              <div><p className="text-[11px] font-bold tracking-wide text-[#0F1E46]">HABAU INFRA</p><h1 className="text-2xl font-black tracking-tight">BAUTAGESBERICHT</h1><p className="text-sm text-[#0F1E46]/70">{d.projekt || "—"}</p></div>
+              <div className="text-sm sm:text-right"><p className="font-bold">{dateDE(d.datum)}</p><p className="text-[#0F1E46]/70">{W?.label} · {d.tempMin || "–"}° / {d.tempMax || "–"}° C</p>{(d.arbeitStart || d.arbeitEnde) && <p className="text-[#0F1E46]/70">Arbeitszeit: {d.arbeitStart || "–"}–{d.arbeitEnde || "–"}</p>}{d.gewerk && <p className="text-[#0F1E46]/70">Gewerk: {d.gewerk}</p>}{d.bauleiter && <p className="text-[#0F1E46]/70">Bauleiter: {d.bauleiter}</p>}</div>
             </div>
             <div className="mb-5 flex flex-wrap gap-4 text-sm">
-              <span className="text-slate-500">Positionen: <b className="text-slate-900">{ps.length}</b></span>
-              <span className="text-slate-500">Personal gesamt: <b className="font-mono text-slate-900">{fmt(tot.ph)}</b> Std.</span>
-              <span className="text-slate-500">Geräte gesamt: <b className="font-mono text-slate-900">{fmt(tot.gh)}</b> Std.</span>
+              <span className="text-[#0F1E46]/70">Positionen: <b className="text-[#0F1E46]">{ps.length}</b></span>
+              <span className="text-[#0F1E46]/70">Personal gesamt: <b className="tabular-nums text-[#0F1E46]">{fmt(tot.ph)}</b> Std.</span>
+              <span className="text-[#0F1E46]/70">Geräte gesamt: <b className="tabular-nums text-[#0F1E46]">{fmt(tot.gh)}</b> Std.</span>
             </div>
             {ps.map((p, i) => (
-              <div key={p.id} className="mb-4 break-inside-avoid rounded-lg border border-slate-200 p-4">
+              <div key={p.id} className="mb-4 break-inside-avoid rounded-sm border border-[#C8D2E6] p-4">
                 <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <span className="rounded bg-slate-900 px-2 py-0.5 font-mono text-xs font-bold text-amber-400">{p.bas}</span>
-                  <b className="text-slate-900">{basName(p.bas)}</b>
-                  <span className="text-sm text-slate-500">{p.sektion}{p.vorhaben ? ` · ${p.vorhaben}` : ""}{p.vorhabenUeb === "Ja" ? " · übergr." : ""} · {p.taetigkeit}</span>
-                  {num(p.menge) > 0 && <span className="ml-auto font-mono text-sm font-semibold text-slate-900">{fmt(num(p.menge))} {p.einheit}</span>}
+                  <span className="rounded-sm bg-[#0F1E46] px-2 py-0.5 tabular-nums text-xs font-bold text-[#FAD200]">{p.bas}</span>
+                  <b className="text-[#0F1E46]">{basName(p.bas)}</b>
+                  <span className="text-sm text-[#0F1E46]/70">{p.sektion}{p.vorhaben ? ` · ${p.vorhaben}` : ""}{p.vorhabenUeb === "Ja" ? " · übergr." : ""} · {p.taetigkeit}</span>
+                  {num(p.menge) > 0 && <span className="ml-auto tabular-nums text-sm font-semibold text-[#0F1E46]">{fmt(num(p.menge))} {p.einheit}</span>}
                 </div>
-                {p.beschreibung && <p className="mb-3 text-sm text-slate-600">{p.beschreibung}</p>}
+                {p.beschreibung && <p className="mb-3 text-sm text-[#0F1E46]/70">{p.beschreibung}</p>}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <MiniTable head={["Rolle", "Anz.", "Std."]} rows={p.personal.filter((x) => x.rolle).map((x) => [x.rolle, x.anzahl, x.stunden])} foot={`${fmt(phOf(p))} Pers.-Std.`} />
                   <MiniTable head={["Gerät", "Anz.", "Std."]} rows={p.geraete.filter((x) => x.typ).map((x) => [geraetLabel(x), x.anzahl, x.stunden])} foot={`${fmt(ghOf(p))} Std.`} />
                 </div>
               </div>
             ))}
-            {ps.length === 0 && <p className="text-slate-400">Keine Positionen erfasst.</p>}
+            {ps.length === 0 && <p className="text-[#677BA4]">Keine Positionen erfasst.</p>}
 
             {(d.stillstand || []).filter((s) => s.start || s.ende || s.grund || s.sektion).length > 0 && (
               <div className="mt-6 break-inside-avoid">
-                <h2 className="mb-2 border-b border-slate-300 pb-1 text-sm font-bold uppercase tracking-wider text-slate-700">Stillstandszeiten</h2>
-                <table className="w-full border-collapse text-sm">
-                  <thead><tr className="border-b border-slate-200 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                    <th className="py-1 pr-2">Nr.</th><th className="py-1 pr-2">Sektion</th><th className="py-1 pr-2">Vorhaben</th><th className="py-1 pr-2">Start</th><th className="py-1 pr-2">Ende</th><th className="py-1">Begründung</th>
+                <h2 className="mb-2 border-b border-[#C8D2E6] pb-1 text-sm font-bold uppercase tracking-wider text-[#0F1E46]">Stillstandszeiten</h2>
+                <div className="overflow-x-auto print:overflow-visible"><table className="w-full border-collapse text-sm">
+                  <thead><tr className="bg-[#0F1E46] text-left text-[11px] font-bold uppercase tracking-wider text-white">
+                    <th className="px-2 py-1">Nr.</th><th className="px-2 py-1">Sektion</th><th className="px-2 py-1">Vorhaben</th><th className="px-2 py-1">Start</th><th className="px-2 py-1">Ende</th>
                   </tr></thead>
                   <tbody>
                     {(d.stillstand || []).filter((s) => s.start || s.ende || s.grund || s.sektion).map((s, i) => (
-                      <tr key={s.id} className="border-b border-slate-100 align-top text-slate-700">
-                        <td className="py-1 pr-2">{i + 1}</td><td className="py-1 pr-2">{s.sektion || "—"}</td><td className="py-1 pr-2">{s.vorhaben || "—"}</td>
-                        <td className="py-1 pr-2 font-mono">{s.start || "—"}</td><td className="py-1 pr-2 font-mono">{s.ende || "—"}</td><td className="py-1">{s.grund || "—"}</td>
-                      </tr>
+                      <Fragment key={s.id}>
+                        <tr className="align-top text-[#0F1E46]">
+                          <td className="px-2 pt-1">{i + 1}</td><td className="whitespace-nowrap px-2 pt-1">{s.sektion || "—"}</td><td className="px-2 pt-1">{s.vorhaben || "—"}</td>
+                          <td className="px-2 pt-1 tabular-nums">{s.start || "—"}</td><td className="px-2 pt-1 tabular-nums">{s.ende || "—"}</td>
+                        </tr>
+                        <tr className="border-b border-[#C8D2E6] text-[#0F1E46]">
+                          <td></td><td colSpan={4} className="px-2 pb-1"><span className="font-bold">Begründung: </span>{s.grund || "—"}</td>
+                        </tr>
+                      </Fragment>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
               </div>
             )}
 
             {(d.vorkommnisse || []).filter((v) => (v.text || "").trim()).length > 0 && (
               <div className="mt-6 break-inside-avoid">
-                <h2 className="mb-2 border-b border-slate-300 pb-1 text-sm font-bold uppercase tracking-wider text-slate-700">Besondere Vorkommnisse / Besucher</h2>
-                <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-700">
+                <h2 className="mb-2 border-b border-[#C8D2E6] pb-1 text-sm font-bold uppercase tracking-wider text-[#0F1E46]">Besondere Vorkommnisse / Besucher</h2>
+                <ol className="list-decimal space-y-1 pl-5 text-sm text-[#0F1E46]">
                   {(d.vorkommnisse || []).filter((v) => (v.text || "").trim()).map((v) => <li key={v.id}>{v.text}</li>)}
                 </ol>
               </div>
             )}
 
-            <p className="mt-6 text-[11px] text-slate-400">Bautagesbericht-Prototyp · {dateDE(d.datum)}</p>
+            <p className="mt-6 border-t border-[#C8D2E6] pt-3 text-center text-[10px] uppercase tracking-[0.3em] text-[#0F1E46]/70">HABAU INFRA | BAUTAGESBERICHT | © 2026</p>
           </div>
         </div>
       </Shell>
@@ -985,12 +993,12 @@ export default function App() {
       <TopBar title="Bautagesbericht" subtitle="Tägliche Leistungserfassung"
         right={
           <div className="flex gap-1">
-            <button onClick={() => setView("settings")} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-300 hover:bg-white/10"><Settings size={15} /> <span className="hidden sm:inline">Listen</span></button>
-            <button onClick={() => setView("archive")} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-300 hover:bg-white/10"><Archive size={15} /> <span className="hidden sm:inline">Berichte</span></button>
+            <button onClick={() => setView("settings")} className="inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/10"><Settings size={15} /> <span className="hidden sm:inline">Listen</span></button>
+            <button onClick={() => setView("archive")} className="inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/10"><Archive size={15} /> <span className="hidden sm:inline">Berichte</span></button>
           </div>
         } />
       <main className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-4 sm:py-6">
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <section className="rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Projekt"><input className={inputCls} value={day.projekt} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, projekt: v })); }} placeholder="Bauvorhaben" /></Field>
             <Field label="Datum"><input type="date" className={inputCls} value={day.datum} onChange={(e) => { const v = e.target.value; setDay((s) => ({ ...s, datum: v })); }} /></Field>
@@ -1011,28 +1019,28 @@ export default function App() {
             <Label>Wetter</Label>
             <div className="flex flex-wrap gap-2">
               {WETTER.map(({ key, label, Icon }) => (
-                <button key={key} onClick={() => setDay((s) => ({ ...s, wetter: key }))} className={`inline-flex min-h-[44px] items-center gap-2 rounded-lg border px-3 text-sm font-medium transition ${day.wetter === key ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`}><Icon size={16} /> {label}</button>
+                <button key={key} onClick={() => setDay((s) => ({ ...s, wetter: key }))} className={`inline-flex min-h-[44px] items-center gap-2 rounded-sm border px-3 text-sm font-medium transition ${day.wetter === key ? "border-[#0F1E46] bg-[#DAE1F0] text-[#0F1E46]" : "border-[#C8D2E6] bg-white text-[#0F1E46]/70 hover:bg-[#DAE1F0]"}`}><Icon size={16} /> {label}</button>
               ))}
             </div>
           </div>
         </section>
 
-        <div className="overflow-hidden rounded-xl border-l-4 border-sky-600 border-y border-r border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5"><Gauge size={16} className="text-sky-600" /><h2 className="text-sm font-bold">Tagesübersicht</h2><span className="hidden text-xs text-slate-400 sm:inline">— Summe aller Positionen, Basis für die Leistungsmeldung</span></div>
-          <div className="grid grid-cols-3 divide-x divide-slate-100">
+        <div className="overflow-hidden rounded-sm border border-[#C8D2E6] border-l-4 border-l-[#FAD200] bg-white">
+          <div className="flex items-center gap-2 border-b border-[#C8D2E6] px-4 py-2.5"><Gauge size={16} className="text-[#0F1E46]" /><h2 className="text-sm font-bold">Tagesübersicht</h2><span className="hidden text-xs text-[#677BA4] sm:inline">— Summe aller Positionen, Basis für die Leistungsmeldung</span></div>
+          <div className="grid grid-cols-3 divide-x divide-[#C8D2E6]">
             <Metric value={fmt(totals.ph)} unit="Std." label="Personal" />
             <Metric value={fmt(totals.gh)} unit="Std." label="Geräte" />
             <Metric value={String(positions.length)} unit="" label="Positionen" />
           </div>
           {totals.mengen.length > 0 && (
-            <div className="border-t border-slate-100 px-4 py-3">
-              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Mengen nach BAS</p>
+            <div className="border-t border-[#C8D2E6] px-4 py-3">
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#677BA4]">Mengen nach BAS</p>
               <div className="flex flex-wrap gap-1.5">
                 {totals.mengen.map((m, i) => (
-                  <span key={i} className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-xs">
-                    <span className="font-mono font-bold text-slate-900">{m.bas}</span>
-                    <span className="hidden text-slate-500 sm:inline">{basName(m.bas)}</span>
-                    <span className="font-mono font-semibold text-sky-700">{fmt(m.menge)} {m.einheit}</span>
+                  <span key={i} className="inline-flex items-center gap-1.5 rounded-sm bg-[#DAE1F0] px-2 py-1 text-xs">
+                    <span className="tabular-nums font-bold text-[#0F1E46]">{m.bas}</span>
+                    <span className="hidden text-[#0F1E46]/70 sm:inline">{basName(m.bas)}</span>
+                    <span className="tabular-nums font-semibold text-[#0F1E46]">{fmt(m.menge)} {m.einheit}</span>
                   </span>
                 ))}
               </div>
@@ -1041,27 +1049,27 @@ export default function App() {
         </div>
 
         <section>
-          <h2 className="mb-2 px-1 text-sm font-bold text-slate-700">Erfasste Leistungen <span className="text-slate-400">({positions.length})</span></h2>
+          <h2 className="mb-2 px-1 text-sm font-bold text-[#0F1E46]">Erfasste Leistungen <span className="text-[#677BA4]">({positions.length})</span></h2>
           {positions.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-300 bg-white py-10 text-center"><ClipboardList className="mx-auto mb-3 text-slate-300" size={40} /><p className="font-medium text-slate-600">Noch keine Leistung erfasst.</p><p className="text-sm text-slate-400">Lege die erste Position über den Button unten an.</p></div>
+            <div className="rounded-sm border border-dashed border-[#C8D2E6] bg-white py-10 text-center"><ClipboardList className="mx-auto mb-3 text-[#677BA4]" size={40} /><p className="font-medium text-[#0F1E46]/70">Noch keine Leistung erfasst.</p><p className="text-sm text-[#677BA4]">Lege die erste Position über den Button unten an.</p></div>
           ) : (
             <div className="space-y-2">
               {positions.map((p) => (
-                <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-slate-300">
+                <div key={p.id} className="rounded-sm border border-[#C8D2E6] bg-white p-3 transition hover:border-[#96A8C7]">
                   <div className="flex items-start gap-3">
-                    <span className="mt-0.5 rounded bg-slate-900 px-2 py-1 font-mono text-xs font-bold text-amber-400">{p.bas}</span>
+                    <span className="mt-0.5 rounded-sm bg-[#0F1E46] px-2 py-1 tabular-nums text-xs font-bold text-[#FAD200]">{p.bas}</span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold text-slate-900">{basName(p.bas)}</p>
-                      <p className="truncate text-xs text-slate-500">{p.sektion} · {p.taetigkeit}</p>
-                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-                        {num(p.menge) > 0 && <span className="font-medium text-slate-700"><Layers size={11} className="mr-0.5 inline" />{fmt(num(p.menge))} {p.einheit}</span>}
+                      <p className="truncate font-semibold text-[#0F1E46]">{basName(p.bas)}</p>
+                      <p className="truncate text-xs text-[#0F1E46]/70">{p.sektion} · {p.taetigkeit}</p>
+                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[#0F1E46]/70">
+                        {num(p.menge) > 0 && <span className="font-medium text-[#0F1E46]"><Layers size={11} className="mr-0.5 inline" />{fmt(num(p.menge))} {p.einheit}</span>}
                         <span><Users size={11} className="mr-0.5 inline" />{fmt(phOf(p))} Std.</span>
                         <span><Truck size={11} className="mr-0.5 inline" />{fmt(ghOf(p))} Std.</span>
                       </div>
                     </div>
                     <div className="flex shrink-0 gap-1">
-                      <button onClick={() => startEdit(p)} className="rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-slate-50" aria-label="Bearbeiten"><Pencil size={15} /></button>
-                      <button onClick={() => deletePosition(p.id)} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Löschen"><Trash2 size={15} /></button>
+                      <button onClick={() => startEdit(p)} className="rounded-sm border border-[#0F1E46] p-2 text-[#0F1E46] hover:bg-[#DAE1F0] bg-white" aria-label="Bearbeiten"><Pencil size={15} /></button>
+                      <button onClick={() => deletePosition(p.id)} className="rounded-sm p-2 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]" aria-label="Löschen"><Trash2 size={15} /></button>
                     </div>
                   </div>
                 </div>
@@ -1070,13 +1078,13 @@ export default function App() {
           )}
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5"><Clock size={16} className="text-amber-600" /><h2 className="text-sm font-bold">Stillstandszeiten</h2><span className="hidden text-xs text-slate-400 sm:inline">— ganztägig, optional</span></div>
+        <section className="rounded-sm border border-[#C8D2E6] bg-white">
+          <div className="flex items-center gap-2 border-b border-[#C8D2E6] px-4 py-2.5"><Clock size={16} className="text-[#0F1E46]" /><h2 className="text-sm font-bold">Stillstandszeiten</h2><span className="hidden text-xs text-[#677BA4] sm:inline">— ganztägig, optional</span></div>
           <div className="space-y-3 p-4">
-            {(day.stillstand || []).length === 0 && <p className="text-sm text-slate-400">Keine Stillstandszeiten.</p>}
+            {(day.stillstand || []).length === 0 && <p className="text-sm text-[#677BA4]">Keine Stillstandszeiten.</p>}
             {(day.stillstand || []).map((s, i) => (
-              <div key={s.id} className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
-                <div className="mb-2 flex items-center justify-between"><span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Stillstand {i + 1}</span><button onClick={() => delDayRow("stillstand", s.id)} className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={16} /></button></div>
+              <div key={s.id} className="rounded-sm border border-[#C8D2E6] bg-[#DAE1F0]/40 p-3">
+                <div className="mb-2 flex items-center justify-between"><span className="text-[11px] font-bold uppercase tracking-wider text-[#677BA4]">Stillstand {i + 1}</span><button onClick={() => delDayRow("stillstand", s.id)} className="rounded-sm p-1 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]"><Trash2 size={16} /></button></div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Sektion"><Combo value={s.sektion} onChange={(v) => updDayRow("stillstand", s.id, { sektion: v })} options={sektOpts} /></Field>
                   <Field label="Vorhaben"><Combo value={s.vorhaben} onChange={(v) => updDayRow("stillstand", s.id, { vorhaben: v })} options={VORHABEN_STILL} placeholder="OST / WEST / Übergreifend" /></Field>
@@ -1090,15 +1098,15 @@ export default function App() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5"><Info size={16} className="text-amber-600" /><h2 className="text-sm font-bold">Besondere Vorkommnisse / Besucher</h2></div>
+        <section className="rounded-sm border border-[#C8D2E6] bg-white">
+          <div className="flex items-center gap-2 border-b border-[#C8D2E6] px-4 py-2.5"><Info size={16} className="text-[#0F1E46]" /><h2 className="text-sm font-bold">Besondere Vorkommnisse / Besucher</h2></div>
           <div className="space-y-3 p-4">
-            {(day.vorkommnisse || []).length === 0 && <p className="text-sm text-slate-400">Keine Einträge.</p>}
+            {(day.vorkommnisse || []).length === 0 && <p className="text-sm text-[#677BA4]">Keine Einträge.</p>}
             {(day.vorkommnisse || []).map((v, i) => (
               <div key={v.id} className="flex items-start gap-2">
-                <span className="mt-3 w-5 shrink-0 text-right text-xs font-semibold text-slate-400">{i + 1}.</span>
+                <span className="mt-3 w-5 shrink-0 text-right text-xs font-semibold text-[#677BA4]">{i + 1}.</span>
                 <textarea rows={2} className={`${inputCls} py-2`} value={v.text || ""} onChange={(e) => updDayRow("vorkommnisse", v.id, { text: e.target.value })} placeholder="Vorkommnis, Besuch von Behörde/Bauherr, Lieferung, Unfall …" />
-                <button onClick={() => delDayRow("vorkommnisse", v.id)} className="mt-1.5 shrink-0 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 size={16} /></button>
+                <button onClick={() => delDayRow("vorkommnisse", v.id)} className="mt-1.5 shrink-0 rounded-sm p-2 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]"><Trash2 size={16} /></button>
               </div>
             ))}
             <AddBtn onClick={() => addDayRow("vorkommnisse", { text: "" })}>Eintrag hinzufügen</AddBtn>
@@ -1107,17 +1115,17 @@ export default function App() {
 
         {hasContent && (
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => { setPreviewData({ day, positions, back: "home" }); setView("preview"); }} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"><FileText size={16} /> Vorschau · PDF · Excel · XML</button>
-            <button onClick={closeDay} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"><CheckCircle2 size={16} /> Tag abschließen</button>
+            <button onClick={() => { setPreviewData({ day, positions, back: "home" }); setView("preview"); }} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-4 py-2.5 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><FileText size={16} /> Vorschau · PDF · Excel · XML</button>
+            <button onClick={closeDay} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-4 py-2.5 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><CheckCircle2 size={16} /> Tag abschließen</button>
           </div>
         )}
       </main>
 
-      <div className="sticky bottom-0 border-t border-slate-200 bg-slate-100/95 backdrop-blur print:hidden">
+      <div className="sticky bottom-0 border-t border-[#C8D2E6] bg-white print:hidden">
         <div className="mx-auto max-w-3xl px-3 py-3 sm:px-4">
-          <button onClick={startNew} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-3.5 text-[15px] font-bold text-white shadow-sm transition hover:bg-amber-700"><Plus size={20} /> Neue Leistung erfassen</button>
+          <button onClick={startNew} className="inline-flex w-full items-center justify-center gap-2 rounded-sm bg-[#FAD200] px-4 py-3.5 text-[15px] font-bold text-[#0F1E46] transition hover:bg-[#FCE466]"><Plus size={20} /> Neue Leistung erfassen</button>
         </div>
-        <p className="px-4 pb-3 text-center text-[11px] text-slate-400">Prototyp · Daten + Listen gerätelokal gespeichert. Für die Freigabe an alle Nutzer → gemeinsame Datenquelle (siehe Chat).</p>
+        <p className="px-4 pb-3 text-center text-[10px] uppercase tracking-[0.3em] text-[#0F1E46]/70">HABAU INFRA | BAUTAGESBERICHT | © 2026</p>
       </div>
       {basModal && <BasModal meta={basMeta(basModal)} code={basModal} onClose={() => setBasModal(null)} />}
     </Shell>
@@ -1128,17 +1136,17 @@ export default function App() {
 function Metric({ value, unit, label }) {
   return (
     <div className="px-3 py-3 text-center">
-      <p className="font-mono text-2xl font-bold leading-none text-slate-900">{value}<span className="ml-0.5 text-sm font-semibold text-slate-400">{unit}</span></p>
-      <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</p>
+      <p className="tabular-nums text-2xl font-bold leading-none text-[#0F1E46]">{value}<span className="ml-0.5 text-sm font-semibold text-[#677BA4]">{unit}</span></p>
+      <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-[#0F1E46]/70">{label}</p>
     </div>
   );
 }
-const SumLine = ({ k, v }) => (<div className="flex gap-3"><span className="w-24 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{k}</span><span className="font-medium text-slate-800">{v}</span></div>);
+const SumLine = ({ k, v }) => (<div className="flex gap-3"><span className="w-24 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-[#677BA4]">{k}</span><span className="font-medium text-[#0F1E46]">{v}</span></div>);
 function MiniSum({ title, icon: Icon, total, rows }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-2 flex items-center justify-between"><span className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-700"><Icon size={15} className="text-slate-400" /> {title}</span><span className="font-mono text-xs font-semibold text-sky-700">{total}</span></div>
-      {rows.length === 0 ? <p className="text-sm text-slate-400">—</p> : <ul className="space-y-1 text-sm text-slate-600">{rows.map((r, i) => <li key={i}>{r}</li>)}</ul>}
+    <div className="rounded-sm border border-[#C8D2E6] bg-white p-4">
+      <div className="mb-2 flex items-center justify-between"><span className="inline-flex items-center gap-1.5 text-sm font-bold text-[#0F1E46]"><Icon size={15} className="text-[#677BA4]" /> {title}</span><span className="tabular-nums text-xs font-semibold text-[#0F1E46]">{total}</span></div>
+      {rows.length === 0 ? <p className="text-sm text-[#677BA4]">—</p> : <ul className="space-y-1 text-sm text-[#0F1E46]/70">{rows.map((r, i) => <li key={i}>{r}</li>)}</ul>}
     </div>
   );
 }
@@ -1146,27 +1154,27 @@ function MiniTable({ head, rows, foot }) {
   return (
     <div>
       <table className="w-full border-collapse text-sm">
-        <thead><tr className="border-b border-slate-200">{head.map((h, i) => <th key={i} className={`py-1 text-[11px] font-bold uppercase tracking-wider text-slate-500 ${i === 0 ? "text-left" : "text-right"}`}>{h}</th>)}</tr></thead>
+        <thead><tr className="bg-[#0F1E46]">{head.map((h, i) => <th key={i} className={`px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-white ${i === 0 ? "text-left" : "text-right"}`}>{h}</th>)}</tr></thead>
         <tbody>
-          {rows.length === 0 ? <tr><td colSpan={head.length} className="py-1 text-slate-400">—</td></tr> :
-            rows.map((r, i) => <tr key={i} className="border-b border-slate-100">{r.map((c, j) => <td key={j} className={`py-1 text-slate-700 ${j === 0 ? "text-left" : "text-right font-mono"}`}>{c || "—"}</td>)}</tr>)}
+          {rows.length === 0 ? <tr><td colSpan={head.length} className="px-2 py-1 text-[#677BA4]">—</td></tr> :
+            rows.map((r, i) => <tr key={i} className="border-b border-[#C8D2E6]">{r.map((c, j) => <td key={j} className={`px-2 py-1 text-[#0F1E46] ${j === 0 ? "text-left" : "text-right tabular-nums"}`}>{c || "—"}</td>)}</tr>)}
         </tbody>
       </table>
-      <p className="mt-1 text-right text-[11px] font-semibold text-slate-500">∑ {foot}</p>
+      <p className="mt-1 border-t-2 border-[#0F1E46] px-2 pt-1 text-right text-[11px] font-bold text-[#0F1E46]">∑ {foot}</p>
     </div>
   );
 }
 function DateBadge({ iso }) {
   const dt = new Date(iso);
-  return (<div className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-lg bg-slate-900 text-white"><span className="text-[10px] leading-none text-amber-400">{dt.toLocaleDateString("de-DE", { month: "short" })}</span><span className="text-base font-bold leading-tight">{dt.getDate()}</span></div>);
+  return (<div className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-sm bg-[#0F1E46] text-white"><span className="text-[10px] leading-none text-[#FAD200]">{dt.toLocaleDateString("de-DE", { month: "short" })}</span><span className="text-base font-bold leading-tight">{dt.getDate()}</span></div>);
 }
 function EditorCard({ icon: Icon, title, count, children }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-amber-400"><Icon size={18} /></div>
-        <h2 className="flex-1 text-[15px] font-bold text-slate-900">{title}</h2>
-        {count !== undefined && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{count}</span>}
+    <section className="rounded-sm border border-[#C8D2E6] bg-white">
+      <div className="flex items-center gap-3 border-b border-[#C8D2E6] px-4 py-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-[#0F1E46] text-[#FAD200]"><Icon size={18} /></div>
+        <h2 className="flex-1 text-[15px] font-bold text-[#0F1E46]">{title}</h2>
+        {count !== undefined && <span className="rounded-sm bg-[#DAE1F0] px-2 py-0.5 text-xs font-semibold text-[#0F1E46]/70">{count}</span>}
       </div>
       <div className="p-4 sm:p-5">{children}</div>
     </section>
@@ -1183,18 +1191,18 @@ function BasEditor({ bas, onChange }) {
   return (
     <EditorCard icon={ListChecks} title="BAS (mit Inhalt)" count={bas.length}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="flex min-w-[180px] flex-1 items-center gap-2 rounded-lg border border-slate-300 px-3"><Search size={15} className="text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="BAS suchen…" className="min-h-[44px] w-full bg-transparent text-sm outline-none" /></div>
-        <button onClick={add} className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-600 hover:border-amber-500 hover:bg-amber-50 hover:text-amber-700"><Plus size={16} /> BAS</button>
+        <div className="flex min-w-[180px] flex-1 items-center gap-2 rounded-sm border border-[#C8D2E6] px-3"><Search size={15} className="text-[#677BA4]" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="BAS suchen…" className="min-h-[44px] w-full bg-transparent text-sm outline-none" /></div>
+        <button onClick={add} className="inline-flex items-center gap-1.5 rounded-sm border border-dashed border-[#96A8C7] px-3 py-2.5 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><Plus size={16} /> BAS</button>
       </div>
       <div className="space-y-3">
         {visible.map(({ b, i }) => (
-          <div key={i} className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+          <div key={i} className="rounded-sm border border-[#C8D2E6] bg-[#DAE1F0]/40 p-3">
             <div className="flex items-start gap-2">
               <div className="grid flex-1 gap-2 sm:grid-cols-[110px_1fr]">
-                <input className={`${inputCls} font-mono`} value={b.code} placeholder="Code" onChange={(e) => setRow(i, { code: e.target.value })} />
+                <input className={`${inputCls} tabular-nums`} value={b.code} placeholder="Code" onChange={(e) => setRow(i, { code: e.target.value })} />
                 <input className={inputCls} value={b.name} placeholder="Bezeichnung" onChange={(e) => setRow(i, { name: e.target.value })} />
               </div>
-              <button onClick={() => del(i)} className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Löschen"><Trash2 size={16} /></button>
+              <button onClick={() => del(i)} className="shrink-0 rounded-sm p-2 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]" aria-label="Löschen"><Trash2 size={16} /></button>
             </div>
             <div className="mt-2 grid gap-2 sm:grid-cols-[110px_1fr]">
               <input className={inputCls} value={b.group || ""} placeholder="Gruppe" onChange={(e) => setRow(i, { group: e.target.value })} />
@@ -1205,7 +1213,7 @@ function BasEditor({ bas, onChange }) {
             </div>
           </div>
         ))}
-        {visible.length === 0 && <p className="py-2 text-sm text-slate-400">Keine Treffer.</p>}
+        {visible.length === 0 && <p className="py-2 text-sm text-[#677BA4]">Keine Treffer.</p>}
       </div>
     </EditorCard>
   );
@@ -1220,13 +1228,13 @@ function GeraeteEditor({ geraete, onChange }) {
     <EditorCard icon={Truck} title="Geräte (Typ → genaue Geräte)" count={geraete.length}>
       <div className="space-y-3">
         {geraete.map((g, i) => (
-          <div key={i} className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+          <div key={i} className="rounded-sm border border-[#C8D2E6] bg-[#DAE1F0]/40 p-3">
             <div className="flex items-center gap-2">
               <input className={`${inputCls} font-medium`} value={g.typ} placeholder="Gerätetyp (z. B. Kettenbagger)" onChange={(e) => setType(i, e.target.value)} />
-              <button onClick={() => delType(i)} className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Typ löschen"><Trash2 size={16} /></button>
+              <button onClick={() => delType(i)} className="shrink-0 rounded-sm p-2 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]" aria-label="Typ löschen"><Trash2 size={16} /></button>
             </div>
-            <div className="mt-2 border-l-2 border-slate-200 pl-3">
-              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Genaue Geräte</p>
+            <div className="mt-2 border-l-2 border-[#C8D2E6] pl-3">
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#677BA4]">Genaue Geräte</p>
               <StringListEditor items={g.units} onChange={(u) => setUnits(i, u)} placeholder="z. B. CAT 320 / Inv.-Nr. 4711" />
             </div>
           </div>
@@ -1239,19 +1247,19 @@ function GeraeteEditor({ geraete, onChange }) {
 
 function BasModal({ meta, code, onClose }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#0F1E46]/50 p-0 sm:items-center sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-sm bg-white p-5" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="flex items-center gap-2">
-            <span className="rounded bg-slate-900 px-2 py-1 font-mono text-sm font-bold text-amber-400">{code}</span>
-            <h3 className="text-base font-bold text-slate-900">{meta.name}</h3>
+            <span className="rounded-sm bg-[#0F1E46] px-2 py-1 tabular-nums text-sm font-bold text-[#FAD200]">{code}</span>
+            <h3 className="text-base font-bold text-[#0F1E46]">{meta.name}</h3>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={18} /></button>
+          <button onClick={onClose} className="rounded-sm p-1.5 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#0F1E46]"><X size={18} /></button>
         </div>
-        {meta.lv && <p className="mb-2 text-sm"><span className="font-semibold text-slate-800">Verknüpfte LV-Leistung: </span><span className="text-slate-700">{meta.lv}</span>{meta.me && <span className="ml-1.5 rounded bg-sky-100 px-1.5 py-0.5 font-mono text-xs text-sky-800">{meta.me}</span>}</p>}
-        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Was steckt drin</p>
-        <p className="text-sm leading-relaxed text-slate-700">{meta.desc || "Noch keine Beschreibung hinterlegt. Unter „Listen verwalten“ → BAS kannst du beschreiben, was in diesem BAS enthalten ist."}</p>
-        {meta.wann && <><p className="mb-1 mt-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Wann dieses BAS wählen</p><p className="text-sm leading-relaxed text-slate-700">{meta.wann}</p></>}
+        {meta.lv && <p className="mb-2 text-sm"><span className="font-semibold text-[#0F1E46]">Verknüpfte LV-Leistung: </span><span className="text-[#0F1E46]">{meta.lv}</span>{meta.me && <span className="ml-1.5 rounded-sm border border-[#C8D2E6] bg-white px-1.5 py-0.5 text-xs tabular-nums text-[#0F1E46]">{meta.me}</span>}</p>}
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[#677BA4]">Was steckt drin</p>
+        <p className="text-sm leading-relaxed text-[#0F1E46]">{meta.desc || "Noch keine Beschreibung hinterlegt. Unter „Listen verwalten“ → BAS kannst du beschreiben, was in diesem BAS enthalten ist."}</p>
+        {meta.wann && <><p className="mb-1 mt-3 text-[11px] font-semibold uppercase tracking-wider text-[#677BA4]">Wann dieses BAS wählen</p><p className="text-sm leading-relaxed text-[#0F1E46]">{meta.wann}</p></>}
       </div>
     </div>
   );
@@ -1270,20 +1278,20 @@ function LoginCard({ onSubmit }) {
     finally { setBusy(false); }
   };
   return (
-    <div className="mx-auto max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="mx-auto max-w-sm rounded-sm border border-[#C8D2E6] bg-white p-6">
       <div className="mb-4 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-amber-400"><Lock size={20} /></div>
-        <div><h2 className="font-bold text-slate-900">Admin-Anmeldung</h2><p className="text-xs text-slate-500">Nur zum Bearbeiten der Listen</p></div>
+        <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-[#0F1E46] text-[#FAD200]"><Lock size={20} /></div>
+        <div><h2 className="font-bold text-[#0F1E46]">Admin-Anmeldung</h2><p className="text-xs text-[#0F1E46]/70">Nur zum Bearbeiten der Listen</p></div>
       </div>
       <div className="space-y-3">
         <Field label="E-Mail"><input type="email" autoComplete="username" className={inputCls} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@firma.de" /></Field>
         <Field label="Passwort"><input type="password" autoComplete="current-password" className={inputCls} value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="••••••••" /></Field>
-        {err && <p className="text-sm text-red-600">{err}</p>}
-        <button onClick={submit} disabled={busy || !email || !pw} className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-bold text-white transition ${busy || !email || !pw ? "cursor-not-allowed bg-slate-300" : "bg-amber-600 hover:bg-amber-700"}`}>
+        {err && <p className="text-sm text-[#C62828]">{err}</p>}
+        <button onClick={submit} disabled={busy || !email || !pw} className={`inline-flex w-full items-center justify-center gap-2 rounded-sm px-4 py-3 text-sm font-bold transition ${busy || !email || !pw ? "cursor-not-allowed bg-[#B1BFD8] text-white" : "bg-[#FAD200] text-[#0F1E46] hover:bg-[#FCE466]"}`}>
           <LogIn size={18} /> {busy ? "Anmelden…" : "Anmelden"}
         </button>
       </div>
-      <p className="mt-4 text-xs text-slate-400">Poliere müssen sich nicht anmelden – sie nutzen die App direkt. Admin-Konten werden in Supabase angelegt (Authentication → Users).</p>
+      <p className="mt-4 text-xs text-[#677BA4]">Poliere müssen sich nicht anmelden – sie nutzen die App direkt. Admin-Konten werden in Supabase angelegt (Authentication → Users).</p>
     </div>
   );
 }
