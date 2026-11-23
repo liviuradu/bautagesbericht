@@ -27,6 +27,16 @@
 </head>
 <body>
 <div id="root"><div id="boot">Lädt Bautagesbericht…</div></div>
+<script>
+/* Lokaler Speicher im Browser: Berichte, Listen-Cache und Anmeldung bleiben nach Neuladen erhalten */
+if (!window.storage) {
+  window.storage = {
+    get: async function (k) { try { var v = localStorage.getItem(k); return v === null ? null : { value: v }; } catch (e) { return null; } },
+    set: async function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+    delete: async function (k) { try { localStorage.removeItem(k); } catch (e) {} }
+  };
+}
+</script>
 <script type="text/babel" data-type="module" data-presets="react">
 import React, { useState, useEffect, useMemo, Fragment } from "react";
 import {
@@ -568,7 +578,9 @@ export default function App() {
   const [day, setDay] = useState(emptyDay());
   const [positions, setPositions] = useState([]);
   const [archive, setArchive] = useState([]);
-  const [view, setView] = useState("home"); // home | wizard | preview | archive | settings
+  const [view, setView] = useState("home"); // home | overview | wizard | preview | archive | settings
+  const [onePage, setOnePage] = useState(false); // Leistung auf einer Seite statt in 5 Schritten
+  const [returnTo, setReturnTo] = useState("home"); // wohin nach Speichern/Abbrechen im Wizard
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState(emptyDraft());
   const [editingId, setEditingId] = useState(null);
@@ -631,8 +643,8 @@ export default function App() {
   const basMeta = (code) => { const b = lists.bas.find((x) => x.code === code); const lvm = BAS_LV[code]; return { name: b?.name || code, lv: lvm?.lv, me: lvm?.me, desc: b?.desc || "", wann: b?.wann || "" }; };
 
   /* --- Wizard --- */
-  const startNew = () => { setDraft(emptyDraft()); setEditingId(null); setStep(0); setView("wizard"); };
-  const startEdit = (p) => { setDraft(structuredClone(p)); setEditingId(p.id); setStep(0); setView("wizard"); };
+  const startNew = (single = false, back = "home") => { setDraft(emptyDraft()); setEditingId(null); setStep(0); setOnePage(single === true); setReturnTo(back); setView("wizard"); };
+  const startEdit = (p, single = false, back = "home") => { setDraft(structuredClone(p)); setEditingId(p.id); setStep(0); setOnePage(single === true); setReturnTo(back); setView("wizard"); };
   const setD = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
   const updRow = (key, id, patch) => setDraft((d) => ({ ...d, [key]: d[key].map((x) => x.id === id ? { ...x, ...patch } : x) }));
   const addRow = (key, blank) => setDraft((d) => ({ ...d, [key]: [...d[key], { id: uid(), ...blank }] }));
@@ -652,11 +664,12 @@ export default function App() {
   ];
   const canNext = stepValid[step];
   const canGoTo = (i) => i <= step || stepValid.slice(0, i).every(Boolean);
+  const allValid = stepValid.every(Boolean);
 
   const savePosition = () => {
     const exists = positions.some((p) => p.id === draft.id);
     const list = exists ? positions.map((p) => p.id === draft.id ? draft : p) : [draft, ...positions];
-    setPositions(list); persist({ positions: list }); setView("home");
+    setPositions(list); persist({ positions: list }); setView(returnTo);
   };
   const deletePosition = (id) => { const list = positions.filter((p) => p.id !== id); setPositions(list); persist({ positions: list }); };
   // Tagesweite Listen (Stillstand, Vorkommnisse) – direkt im day-Objekt, sofort gespeichert
@@ -730,9 +743,16 @@ export default function App() {
   if (view === "wizard") {
     return (
       <Shell>
-        <TopBar title={editingId ? "Leistung bearbeiten" : "Neue Leistung"} subtitle={`Schritt ${step + 1}/${STEPS.length} · ${STEPS[step]}`}
-          left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-sm bg-white/10 text-white hover:bg-white/20" aria-label="Abbrechen"><X size={18} /></button>} />
-        <div className="mx-auto max-w-3xl px-4 pt-4">
+        <TopBar title={editingId ? "Leistung bearbeiten" : "Neue Leistung"} subtitle={onePage ? "Alles auf einer Seite" : `Schritt ${step + 1}/${STEPS.length} · ${STEPS[step]}`}
+          left={<button onClick={() => setView(returnTo)} className="flex h-9 w-9 items-center justify-center rounded-sm bg-white/10 text-white hover:bg-white/20" aria-label="Abbrechen"><X size={18} /></button>} />
+        <div className="mx-auto max-w-3xl px-3 pt-4 sm:px-4">
+          <div className="flex gap-2">
+            {[[false, "Schritt für Schritt"], [true, "Alles auf einer Seite"]].map(([v, l]) => (
+              <button key={l} onClick={() => setOnePage(v)} className={`min-h-[40px] flex-1 rounded-sm border px-2 text-sm font-semibold transition ${onePage === v ? "border-[#0F1E46] bg-[#DAE1F0] text-[#0F1E46]" : "border-[#C8D2E6] bg-white text-[#0F1E46]/70 hover:bg-[#DAE1F0]"}`}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <div className={`mx-auto max-w-3xl px-4 pt-4 ${onePage ? "hidden" : ""}`}>
           <div className="flex items-center gap-1.5">
             {STEPS.map((s, i) => (
               <button key={s} onClick={() => canGoTo(i) && setStep(i)} disabled={!canGoTo(i)} className="group flex-1 text-left">
@@ -744,7 +764,8 @@ export default function App() {
         </div>
 
         <main className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-4">
-          {step === 0 && (
+          {onePage && <h2 className="px-1 text-sm font-bold uppercase tracking-wider text-[#0F1E46]">1 · Leistung</h2>}
+          {(onePage || step === 0) && (
             <div className="space-y-4 rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
               <Field label="Sektion"><Combo value={draft.sektion} onChange={(v) => setD("sektion", v)} options={sektOpts} /></Field>
               {(() => { const si = sektInfo(draft.sektion); return si ? (
@@ -805,11 +826,12 @@ export default function App() {
                   </div>
                 </div>
               ) : null; })()}
-              {!canNext && <p className="text-xs text-[#C62828]">Bitte Sektion, Vorhaben (oder „Vorhabenübergreifend: Ja"), Tätigkeit und BAS auswählen.</p>}
+              {!stepValid[0] && <p className="text-xs text-[#C62828]">Bitte Sektion, Vorhaben (oder „Vorhabenübergreifend: Ja"), Tätigkeit und BAS auswählen.</p>}
             </div>
           )}
 
-          {step === 1 && (
+          {onePage && <h2 className="px-1 text-sm font-bold uppercase tracking-wider text-[#0F1E46]">2 · Ausführung</h2>}
+          {(onePage || step === 1) && (
             <div className="space-y-4 rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
               <Field label="Beschreibung (Detail)">
                 <textarea rows={4} className={`${inputCls} min-h-[110px] py-2`} value={draft.beschreibung} onChange={(e) => setD("beschreibung", e.target.value)} placeholder="Was wurde konkret ausgeführt? Ort, Abschnitt, Besonderheiten, Behinderungen …" />
@@ -818,11 +840,12 @@ export default function App() {
                 <Field label="Menge"><input type="number" inputMode="decimal" className={inputCls} value={draft.menge} onChange={(e) => setD("menge", e.target.value)} placeholder="0" /></Field>
                 <Field label="Einheit"><Combo value={draft.einheit} onChange={(v) => setD("einheit", v)} options={EINHEITEN.map((u) => ({ value: u, label: u }))} placeholder="–" /></Field>
               </div>
-              {!canNext && <p className="text-xs text-[#C62828]">Beschreibung, Menge (&gt; 0) und Einheit ausfüllen.</p>}
+              {!stepValid[1] && <p className="text-xs text-[#C62828]">Beschreibung, Menge (&gt; 0) und Einheit ausfüllen.</p>}
             </div>
           )}
 
-          {step === 2 && (
+          {onePage && <h2 className="px-1 text-sm font-bold uppercase tracking-wider text-[#0F1E46]">3 · Personal</h2>}
+          {(onePage || step === 2) && (
             <div className="rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-sm text-[#0F1E46]/70">Wer hat an dieser Leistung gearbeitet?</p>
@@ -841,11 +864,12 @@ export default function App() {
                 ))}
               </div>
               <AddBtn onClick={() => addRow("personal", { rolle: "", anzahl: "", stunden: "" })}>Rolle hinzufügen</AddBtn>
-              {!canNext && <p className="mt-2 text-xs text-[#C62828]">Mindestens eine Person mit Rolle, Anzahl (&gt; 0) und Stunden (&gt; 0). Angefangene Zeilen bitte vervollständigen oder entfernen.</p>}
+              {!stepValid[2] && <p className="mt-2 text-xs text-[#C62828]">Mindestens eine Person mit Rolle, Anzahl (&gt; 0) und Stunden (&gt; 0). Angefangene Zeilen bitte vervollständigen oder entfernen.</p>}
             </div>
           )}
 
-          {step === 3 && (
+          {onePage && <h2 className="px-1 text-sm font-bold uppercase tracking-wider text-[#0F1E46]">4 · Geräte</h2>}
+          {(onePage || step === 3) && (
             <div className="rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-sm text-[#0F1E46]/70">Welche Geräte waren im Einsatz?</p>
@@ -875,7 +899,7 @@ export default function App() {
             </div>
           )}
 
-          {step === 4 && (
+          {!onePage && step === 4 && (
             <div className="space-y-3">
               <div className="rounded-sm border border-[#C8D2E6] bg-white">
                 <div className="flex items-center gap-2 border-b border-[#C8D2E6] px-4 py-3"><Layers size={16} className="text-[#0F1E46]" /><h3 className="text-sm font-bold">Leistung</h3></div>
@@ -898,16 +922,80 @@ export default function App() {
 
         <div className="sticky bottom-0 border-t border-[#C8D2E6] bg-white print:hidden">
           <div className="mx-auto flex max-w-3xl items-center gap-2 px-3 py-3 sm:px-4">
-            {step > 0
+            {!onePage && step > 0
               ? <button onClick={() => setStep((s) => s - 1)} className="inline-flex items-center gap-1 rounded-sm border border-[#0F1E46] bg-white px-4 py-3 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><ChevronLeft size={16} /> Zurück</button>
-              : <button onClick={() => setView("home")} className="rounded-sm border border-[#0F1E46] bg-white px-4 py-3 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]">Abbrechen</button>}
+              : <button onClick={() => setView(returnTo)} className="rounded-sm border border-[#0F1E46] bg-white px-4 py-3 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]">Abbrechen</button>}
             <div className="flex-1" />
-            {step < STEPS.length - 1
+            {onePage
+              ? <button onClick={() => allValid && savePosition()} disabled={!allValid} className={`inline-flex items-center gap-2 rounded-sm px-5 py-3 text-sm font-bold transition ${allValid ? "bg-[#FAD200] text-[#0F1E46] hover:bg-[#FCE466]" : "cursor-not-allowed bg-[#B1BFD8] text-white"}`}><Save size={18} /> Position speichern</button>
+              : step < STEPS.length - 1
               ? <button onClick={() => canNext && setStep((s) => s + 1)} disabled={!canNext} className={`inline-flex items-center gap-1 rounded-sm px-5 py-3 text-sm font-bold text-white transition ${canNext ? "bg-[#0F1E46] hover:bg-[#0F1E46]/90" : "cursor-not-allowed bg-[#B1BFD8]"}`}>Weiter <ChevronRight size={16} /></button>
               : <button onClick={savePosition} className="inline-flex items-center gap-2 rounded-sm bg-[#FAD200] px-5 py-3 text-sm font-bold text-[#0F1E46] hover:bg-[#FCE466]"><Save size={18} /> Position speichern</button>}
           </div>
         </div>
         {basModal && <BasModal meta={basMeta(basModal)} code={basModal} onClose={() => setBasModal(null)} />}
+      </Shell>
+    );
+  }
+
+  /* ============ ÜBERSICHT (alles auf einer Seite) ============ */
+  if (view === "overview") {
+    const W = WETTER.find((w) => w.key === day.wetter);
+    const still = (day.stillstand || []).filter((x) => x.start || x.ende || x.grund || x.sektion);
+    const vork = (day.vorkommnisse || []).filter((v) => (v.text || "").trim());
+    const KV = ({ k, v }) => (<div className="flex gap-3 text-sm"><span className="w-28 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-[#677BA4]">{k}</span><span className="text-[#0F1E46]">{v || "—"}</span></div>);
+    return (
+      <Shell>
+        <TopBar title="Übersicht" subtitle={`${dateDE(day.datum)} · alles auf einer Seite`}
+          left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-sm bg-white/10 text-white hover:bg-white/20" aria-label="Zurück"><ChevronLeft size={18} /></button>} />
+        <main className="mx-auto max-w-3xl space-y-4 px-3 py-4 sm:px-4 sm:py-6">
+          <section className="rounded-sm border border-[#C8D2E6] border-l-4 border-l-[#FAD200] bg-white p-4">
+            <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-bold text-[#0F1E46]">Kopfdaten</h2><button onClick={() => setView("home")} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0F1E46] underline"><Pencil size={12} /> ändern</button></div>
+            <div className="space-y-1">
+              <KV k="Projekt" v={day.projekt} /><KV k="Datum" v={dateDE(day.datum)} /><KV k="Bauleiter" v={day.bauleiter} />
+              <KV k="Arbeitszeit" v={(day.arbeitStart || day.arbeitEnde) ? `${day.arbeitStart || "–"} – ${day.arbeitEnde || "–"}` : ""} />
+              <KV k="Gewerk" v={day.gewerk} /><KV k="Wetter" v={`${W ? W.label : ""} · ${day.tempMin || "–"}° / ${day.tempMax || "–"}° C`} />
+              <KV k="Summen" v={`${fmt(totals.ph)} Pers.-Std. · ${fmt(totals.gh)} Geräte-Std. · ${positions.length} Position(en)`} />
+            </div>
+          </section>
+
+          <h2 className="px-1 text-sm font-bold text-[#0F1E46]">Leistungen <span className="text-[#677BA4]">({positions.length})</span></h2>
+          {positions.length === 0 && <p className="rounded-sm border border-dashed border-[#96A8C7] bg-white p-4 text-sm text-[#0F1E46]/70">Noch keine Leistung erfasst.</p>}
+          {positions.map((p, i) => (
+            <section key={p.id} className="rounded-sm border border-[#C8D2E6] bg-white p-4">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 rounded-sm bg-[#0F1E46] px-2 py-1 text-xs font-bold tabular-nums text-[#FAD200]">{p.bas}</span>
+                <div className="min-w-0 flex-1"><p className="font-semibold text-[#0F1E46]">{i + 1}. {basName(p.bas)}</p></div>
+                <button onClick={() => startEdit(p, true, "overview")} className="inline-flex items-center gap-1 rounded-sm border border-[#0F1E46] px-2.5 py-1.5 text-xs font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><Pencil size={13} /> Bearbeiten</button>
+                <button onClick={() => deletePosition(p.id)} className="rounded-sm p-1.5 text-[#677BA4] hover:bg-[#DAE1F0] hover:text-[#C62828]" aria-label="Löschen"><Trash2 size={15} /></button>
+              </div>
+              <div className="mt-3 space-y-1">
+                <KV k="Sektion" v={p.sektion} />
+                <KV k="Vorhaben" v={`${p.vorhaben || "—"}${p.vorhabenUeb === "Ja" ? " · übergreifend" : ""}`} />
+                <KV k="Tätigkeit" v={p.taetigkeit} />
+                <KV k="Menge" v={num(p.menge) ? `${fmt(num(p.menge))} ${p.einheit}` : ""} />
+                <KV k="Beschreibung" v={p.beschreibung} />
+                <KV k="Personal" v={p.personal.filter((x) => x.rolle).map((x) => `${x.anzahl}× ${x.rolle} · ${x.stunden} Std.`).join(", ")} />
+                <KV k="Geräte" v={p.geraete.filter((x) => x.typ).map((x) => `${x.anzahl || 1}× ${geraetLabel(x)} · ${x.stunden} Std.`).join(", ")} />
+              </div>
+            </section>
+          ))}
+          <button onClick={() => startNew(true, "overview")} className="inline-flex w-full items-center justify-center gap-2 rounded-sm border border-dashed border-[#96A8C7] bg-white px-4 py-3 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><Plus size={18} /> Leistung auf einer Seite erfassen</button>
+
+          <section className="rounded-sm border border-[#C8D2E6] bg-white p-4">
+            <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-bold text-[#0F1E46]">Stillstandszeiten <span className="text-[#677BA4]">({still.length})</span></h2><button onClick={() => setView("home")} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0F1E46] underline"><Pencil size={12} /> ändern</button></div>
+            {still.length === 0 ? <p className="text-sm text-[#0F1E46]/70">Keine.</p> : still.map((x, i) => (
+              <p key={x.id} className="border-b border-[#C8D2E6] py-1.5 text-sm text-[#0F1E46] last:border-0">{i + 1}. {x.sektion || "—"} · {x.vorhaben || "—"} · <span className="tabular-nums">{x.start || "–"}–{x.ende || "–"}</span> · {x.grund || "—"}</p>
+            ))}
+          </section>
+          <section className="rounded-sm border border-[#C8D2E6] bg-white p-4">
+            <div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-bold text-[#0F1E46]">Besondere Vorkommnisse / Besucher <span className="text-[#677BA4]">({vork.length})</span></h2><button onClick={() => setView("home")} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0F1E46] underline"><Pencil size={12} /> ändern</button></div>
+            {vork.length === 0 ? <p className="text-sm text-[#0F1E46]/70">Keine.</p> : vork.map((v, i) => (<p key={v.id} className="border-b border-[#C8D2E6] py-1.5 text-sm text-[#0F1E46] last:border-0">{i + 1}. {v.text}</p>))}
+          </section>
+
+          {hasContent && <button onClick={() => { setPreviewData({ day, positions, back: "overview" }); setView("preview"); }} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-4 py-2.5 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><FileText size={16} /> Vorschau · PDF · Excel · XML</button>}
+          <p className="pt-2 text-center text-[10px] uppercase tracking-[0.3em] text-[#0F1E46]/70">HABAU INFRA | BAUTAGESBERICHT | © 2026</p>
+        </main>
       </Shell>
     );
   }
@@ -1154,7 +1242,10 @@ export default function App() {
 
       <div className="sticky bottom-0 border-t border-[#C8D2E6] bg-white print:hidden">
         <div className="mx-auto max-w-3xl px-3 py-3 sm:px-4">
-          <button onClick={startNew} className="inline-flex w-full items-center justify-center gap-2 rounded-sm bg-[#FAD200] px-4 py-3.5 text-[15px] font-bold text-[#0F1E46] transition hover:bg-[#FCE466]"><Plus size={20} /> Neue Leistung erfassen</button>
+          <div className="flex gap-2">
+            <button onClick={() => setView("overview")} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-4 py-3.5 text-[15px] font-bold text-[#0F1E46] transition hover:bg-[#DAE1F0]"><ClipboardList size={18} /> Übersicht</button>
+            <button onClick={() => startNew()} className="inline-flex flex-1 items-center justify-center gap-2 rounded-sm bg-[#FAD200] px-4 py-3.5 text-[15px] font-bold text-[#0F1E46] transition hover:bg-[#FCE466]"><Plus size={20} /> Neue Leistung</button>
+          </div>
         </div>
         <p className="px-4 pb-3 text-center text-[10px] uppercase tracking-[0.3em] text-[#0F1E46]/70">HABAU INFRA | BAUTAGESBERICHT | © 2026</p>
       </div>
