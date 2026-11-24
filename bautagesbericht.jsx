@@ -22,7 +22,7 @@ async function sbLoadLists() {
   return rows[0]?.data || null;
 }
 async function sbSaveLists(lists, token) {
-  const { personen, nuAnsprech, ...shared } = lists; // Namen/Ansprechpartner nur lokal, nie auf den Server
+  const { personen, nuAnsprech, logo, ...shared } = lists; // Namen/Ansprechpartner nur lokal, nie auf den Server
   lists = shared;
   const r = await fetch(`${SUPABASE_URL}/rest/v1/app_lists?on_conflict=id`, {
     method: "POST",
@@ -215,7 +215,7 @@ const SEKTION_INFO = {
 const sektInfo = (name) => SEKTION_INFO[name] || null;
 /* ===================== Projektprofil: was je Projekt verschieden ist ===================== */
 const DEF_PROFIL = {
-  typ: "suedlink", projekt: "SuedLink Los 3",
+  typ: "suedlink", projekt: "SuedLink Los 3", firma: "HABAU INFRA", // Text im Kopf (leer = nichts anzeigen)
   ort1: "Sektion", ort1Aktiv: true,                  // Bezeichnung der Ortsangabe (Liste "sektionen")
   ort2Aktiv: true, ort2: "Vorhaben", ort2Optionen: ["West", "Ost"],
   ort2Ueb: true, ort2UebLabel: "Vorhabenübergreifend", // zusätzliche Auswahl "gilt für alle"
@@ -240,6 +240,7 @@ const PROFIL_TYPEN = [
   { key: "hochbau", name: "Hochbau", was: "Gebäude, Bauteile, Geschosse", ort1: "Gebäude / Bauteil", ort2Aktiv: true, ort2: "Geschoss", ort2Optionen: ["UG", "EG", "1. OG", "2. OG", "Dach"], ort2Ueb: true, ort2UebLabel: "Mehrere Geschosse", stationAktiv: true, station: "Achse / Raum", beispiel: ["Haus A", "Haus B", "Tiefgarage", "Außenanlagen"] },
   { key: "flaeche", name: "Flächenbaustelle", was: "Erdbau, Baufeld, Deponie, Außenanlagen", ort1: "Baufeld", ort2Aktiv: false, ort2: "Teilfläche", ort2Optionen: [], ort2Ueb: false, ort2UebLabel: "Gesamte Fläche", stationAktiv: false, station: "Lage", beispiel: ["Baufeld 1", "Baufeld 2", "Baufeld 3"] },
 ];
+let _logo = null; // {src, r} eigenes Logo im Kopf (nur lokal gespeichert)
 let _prof = DEF_PROFIL; // aktives Profil für die Export-Funktionen (wird von App gesetzt)
 const ort2Text = (p) => (p.vorhabenUeb === "Ja" ? _prof.ort2UebLabel : (p.vorhaben || ""));
 /* Ortszeile einer Position (alle aktiven Ebenen außer dem Schlüssel) – einzige Stelle für diese Anzeige */
@@ -269,6 +270,26 @@ const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ""); return m ?
 const spanH = (a, b) => { const x = toMin(a), y = toMin(b); return x !== null && y !== null && y > x ? (y - x) / 60 : 0; };
 const stillPers = (s) => (s.personal || []).filter((r) => r.rolle).map((r) => `${num(r.anzahl) || 1}× ${r.rolle}`).join(", ");
 const stillGer = (s) => (s.geraete || []).filter((r) => r.typ).map((r) => `${num(r.anzahl) || 1}× ${geraetLabel(r)}`).join(", ");
+/* Logo verkleinern (PNG, Transparenz bleibt) */
+function fileToLogo(file) {
+  return new Promise((res, rej) => {
+    const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, 480 / img.width, 160 / img.height);
+      const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      res({ src: c.toDataURL("image/png"), r: c.width / c.height });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("Bild konnte nicht gelesen werden")); };
+    img.src = url;
+  });
+}
+/* Kopf im PDF: Logo oder Firmentext; gibt die verbrauchte Höhe zurück */
+function pdfBrand(doc, x, y, size) {
+  if (_logo) { const h = size * 2.4; try { doc.addImage(_logo.src, "PNG", x, y - h + 2, h * _logo.r, h); } catch (e) {} return; }
+  if (_prof.firma) { doc.setFont("helvetica", "bold"); doc.setFontSize(size); doc.text(String(_prof.firma), x, y); }
+}
+const brandFoot = (t) => [_prof.firma, t].filter(Boolean).join(" | ");
 function fileToJpeg(file, max = 1600, q = 0.75) {
   return new Promise((res, rej) => {
     const img = new Image(); const url = URL.createObjectURL(file);
@@ -302,7 +323,7 @@ function listsToWorkbook(l) {
   add("BAS", [["Code", "Bezeichnung", "Gruppe", "Was steckt drin", "Wann wählen"], ...(l.bas || []).filter((x) => x.code).map((x) => [String(x.code), x.name || "", x.group || "", x.desc || "", x.wann || ""])]);
   const pr = { ...DEF_PROFIL, ...(l.profil || {}) }; const pfl = { ...DEF_PFLICHT, ...(l.pflicht || {}) };
   const jn = (v) => (v ? "ja" : "nein");
-  add("Projekt", [["Einstellung", "Wert"], ...PROF_STR.slice(0, 3).map((k) => [k, pr[k]]), ["ort1Aktiv", jn(pr.ort1Aktiv)], ["ort2Aktiv", jn(pr.ort2Aktiv)], ["ort2", pr.ort2], ["ort2Optionen", (pr.ort2Optionen || []).filter(Boolean).join("; ")],
+  add("Projekt", [["Einstellung", "Wert"], ...PROF_STR.slice(0, 3).map((k) => [k, pr[k]]), ["firma", pr.firma], ["ort1Aktiv", jn(pr.ort1Aktiv)], ["ort2Aktiv", jn(pr.ort2Aktiv)], ["ort2", pr.ort2], ["ort2Optionen", (pr.ort2Optionen || []).filter(Boolean).join("; ")],
     ["ort2Ueb", jn(pr.ort2Ueb)], ["ort2UebLabel", pr.ort2UebLabel], ["stationAktiv", jn(pr.stationAktiv)], ["station", pr.station], ["schluessel", pr.schluessel], ["basAktiv", jn(pr.basAktiv)],
     ["taetLabel", pr.taetLabel], ["taetAktiv", jn(pr.taetAktiv)], ["e5Label", pr.e5Label], ["e5Aktiv", jn(pr.e5Aktiv)], ["e6Label", pr.e6Label], ["e6Aktiv", jn(pr.e6Aktiv)],
     ...Object.keys(DEF_PFLICHT).map((k) => ["pflicht." + k, jn(pfl[k])])]);
@@ -337,6 +358,7 @@ function workbookToLists(wb, cur) {
       if (k.startsWith("pflicht.") && k.slice(8) in DEF_PFLICHT) pfl[k.slice(8)] = yes(v);
       else if (PROF_BOOL.includes(k)) pr[k] = yes(v);
       else if (k === "ort2Optionen") pr.ort2Optionen = str(v).split(";").map((t) => t.trim()).filter(Boolean);
+      else if (k === "firma") pr.firma = str(v); // darf leer sein
       else if (PROF_STR.includes(k) && str(v)) pr[k] = str(v);
     });
     out.profil = pr; out.pflicht = pfl; found.push("Projekt");
@@ -443,7 +465,7 @@ function renderDayPdf(doc, autoTable, day, positions, kurz, fotos) {
   const H = doc.internal.pageSize.getHeight();
   const M = 40;
   let y = 46;
-  doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.text("HABAU INFRA", M, y); y += 18;
+  pdfBrand(doc, M, y, 8); y += 18;
   doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.text("BAUTAGESBERICHT", M, y);
   doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.text(String(day.projekt || ""), M, y + 15);
   doc.setFont("helvetica", "bold"); doc.text(dateDE(day.datum), W - M, y, { align: "right" });
@@ -550,7 +572,7 @@ async function buildPdfBlob(day, positions, kurz, fotos) {
   const autoTable = (await import("jspdf-autotable")).default;
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   renderDayPdf(doc, autoTable, day, positions, kurz, fotos);
-  addPageFooters(doc, "HABAU INFRA | Bautagesbericht " + dateDE(day.datum));
+  addPageFooters(doc, brandFoot("Bautagesbericht " + dateDE(day.datum)));
   return doc.output("blob");
 }
 /* Projekt-PDF: Deckblatt + Inhaltsverzeichnis, danach jeder Bericht auf neuer Seite. entries = [{day, positions, fotos}] (älteste zuerst) */
@@ -561,7 +583,7 @@ async function buildProjectPdfBlob(entries, kurz, projekt) {
   const W = doc.internal.pageSize.getWidth(); const M = 40;
   const von = entries[0].day.datum, bis = entries[entries.length - 1].day.datum;
   doc.setTextColor(15, 30, 70);
-  doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text("HABAU INFRA", M, 60);
+  pdfBrand(doc, M, 60, 10); doc.setFont("helvetica", "bold");
   doc.setFontSize(26); doc.text("Bautagesberichte", M, 100);
   doc.setFont("helvetica", "normal"); doc.setFontSize(14); doc.text(String(projekt || ""), M, 124);
   doc.setFontSize(10); doc.text(`Zeitraum: ${dateDE(von)} – ${dateDE(bis)}`, M, 144); doc.text(`Anzahl Berichte: ${entries.length}`, M, 158);
@@ -573,7 +595,7 @@ async function buildProjectPdfBlob(entries, kurz, projekt) {
     columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" } }, margin: { left: M, right: M },
   });
   for (const e of entries) { doc.addPage(); renderDayPdf(doc, autoTable, e.day, e.positions, kurz, e.fotos); }
-  addPageFooters(doc, "HABAU INFRA | Bautagesberichte " + (projekt || ""));
+  addPageFooters(doc, brandFoot("Bautagesberichte " + (projekt || "")));
   return doc.output("blob");
 }
 
@@ -694,7 +716,7 @@ function TopBar({ title, subtitle, left, right }) {
       <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
         {left}
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-bold leading-none tracking-wide text-white">HABAU INFRA</p>
+          {_logo ? <img src={_logo.src} alt={_prof.firma || "Logo"} className="mb-1 h-7 w-auto rounded-sm bg-white p-0.5" /> : (_prof.firma ? <p className="text-[11px] font-bold leading-none tracking-wide text-white">{_prof.firma}</p> : null)}
           <h1 className="mt-1 truncate text-base font-bold leading-none tracking-tight text-white">{title}</h1>
           {subtitle && <p className="mt-1 truncate text-[11px] text-white/70">{subtitle}</p>}
         </div>
@@ -956,6 +978,7 @@ function LevelRow({ lv, nr, prof, pf, count, isOpen, onToggle, onProfil, onPflic
 
 /* Tab "Projekt": Vorlage wählen und die 6 Ebenen einer Leistung einstellen */
 function ProjektTab({ prof, pf, lists, open, setOpen, onProfil, onPflicht, onList, onTyp }) {
+  const logo = lists.logo; const onLogo = (v) => onList("logo", v);
   const [mitBeispiel, setMitBeispiel] = useState(false);
   const opts = (prof.ort2Optionen || []).filter((x) => x.trim());
   const cnt = (a) => (a || []).filter((x) => String(x).trim()).length;
@@ -984,6 +1007,14 @@ function ProjektTab({ prof, pf, lists, open, setOpen, onProfil, onPflicht, onLis
       <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4">
         <h2 className="text-sm font-bold text-[#0F1E46]">2 · Einstellungen für dieses Projekt</h2>
         <ProfRow title="Projektname" hint="Steht im Kopf jedes neuen Tagesberichts."><input className={CELL_INPUT} value={prof.projekt} onChange={(e) => onProfil({ projekt: e.target.value })} placeholder="Name des Projekts" /></ProfRow>
+        <ProfRow title="Firmenname im Kopf" hint="Text oben in der App, in der Vorschau und im PDF. Leer lassen, wenn nichts stehen soll."><input className={CELL_INPUT} value={prof.firma} onChange={(e) => onProfil({ firma: e.target.value })} placeholder="kein Text" /></ProfRow>
+        <ProfRow title="Logo statt Text" hint="Ein eigenes Bild (PNG oder JPG) ersetzt den Firmennamen im Kopf. Wird nur auf diesem Gerät gespeichert.">
+          <div className="flex flex-wrap items-center gap-3">
+            {logo && logo.src ? <img src={logo.src} alt="Logo" className="h-10 w-auto border border-[#C8D2E6] bg-white p-1" /> : <span className="text-sm text-[#0F1E46]/70">Kein Logo</span>}
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-sm bg-[#FAD200] px-3 py-2 text-sm font-bold text-[#0F1E46] hover:bg-[#FCE466]">Logo hochladen<input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden" data-logo-input onChange={async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) { try { onLogo(await fileToLogo(f)); } catch (err) {} } }} /></label>
+            {logo && logo.src ? <button type="button" onClick={() => onLogo(null)} className="rounded-sm border border-[#C8D2E6] bg-white px-3 py-2 text-sm font-semibold text-[#C62828] hover:bg-[#DAE1F0]">Logo entfernen</button> : null}
+          </div>
+        </ProfRow>
         <div className="pt-3">
           <p className="text-sm font-semibold text-[#0F1E46]">Ebenen einer Leistung</p>
           <p className="text-xs text-[#0F1E46]/70">Bis zu 6 Ebenen. Gib jeder Ebene einen Namen, schalte nicht benötigte aus und lege fest, ob die Angabe Pflicht ist. Die Auswahllisten pflegst du je Ebene mit „Liste bearbeiten“.</p>
@@ -1209,7 +1240,7 @@ export default function App() {
         }
       } catch (e) {}
       if (SB_ON && !localOnly) {
-        try { const d = await sbLoadLists(); if (d) setLists((cur) => ({ ...defaultLists(), ...d, personen: cur.personen || [], nuAnsprech: cur.nuAnsprech || {} })); } // gemeinsame Listen
+        try { const d = await sbLoadLists(); if (d) setLists((cur) => ({ ...defaultLists(), ...d, personen: cur.personen || [], nuAnsprech: cur.nuAnsprech || {}, logo: cur.logo || null })); } // gemeinsame Listen
         catch (e) { /* offline/blockiert -> lokaler Cache bleibt */ }
       }
     })();
@@ -1244,7 +1275,7 @@ export default function App() {
   const enableLocalEdit = async () => { setLocalEdit(true); try { if (window.storage) await window.storage.set("btb_lists_local", "1"); } catch (e) {} };
   const disableLocalEdit = async () => {
     setLocalEdit(false); try { if (window.storage) await window.storage.delete("btb_lists_local"); } catch (e) {}
-    if (SB_ON) { try { const d = await sbLoadLists(); const n = { ...defaultLists(), ...(d || {}), personen: lists.personen || [], nuAnsprech: lists.nuAnsprech || {} }; setLists(n); persistLists(n); } catch (e) { setListsErr("Gemeinsame Listen konnten nicht geladen werden."); } }
+    if (SB_ON) { try { const d = await sbLoadLists(); const n = { ...defaultLists(), ...(d || {}), personen: lists.personen || [], nuAnsprech: lists.nuAnsprech || {}, logo: lists.logo || null }; setLists(n); persistLists(n); } catch (e) { setListsErr("Gemeinsame Listen konnten nicht geladen werden."); } }
   };
   const exportLists = () => {
     const wb = listsToWorkbook(lists);
@@ -1328,7 +1359,7 @@ export default function App() {
   const applyBasInfo = () => { const m = basMeta(draft.bas); setDraft((d) => ({ ...d, beschreibung: d.beschreibung || m.lv || m.desc || "", einheit: d.einheit || m.me || "" })); };
   // Pflichtfelder je Schritt (einstellbar)
   const pf = { ...DEF_PFLICHT, ...(lists.pflicht || {}) };
-  const prof = { ...DEF_PROFIL, ...(lists.profil || {}) }; _prof = prof; // Projektprofil (Bezeichnungen, Auswahl)
+  const prof = { ...DEF_PROFIL, ...(lists.profil || {}) }; _prof = prof; _logo = lists.logo && lists.logo.src ? lists.logo : null; // Projektprofil (Bezeichnungen, Auswahl)
   const ort2Opts = [...(prof.ort2Optionen || []).filter((x) => x && x.trim()), ...(prof.ort2Ueb ? [prof.ort2UebLabel] : [])];
   const setProfil = (patch) => {
     setListKey("profil", { ...prof, ...patch });
@@ -1707,7 +1738,7 @@ export default function App() {
           {sendMsg && <p className="mb-3 border-l-4 border-[#FAD200] bg-[#DAE1F0] p-3 text-sm text-[#0F1E46] print:hidden">{sendMsg}</p>}
           <div className="rounded-sm border border-[#C8D2E6] bg-white p-6 sm:p-8 print:border-0 print:p-0">
             <div className="mb-5 flex flex-col gap-2 border-b-4 border-[#FAD200] pb-4 sm:flex-row sm:items-start sm:justify-between">
-              <div><p className="text-[11px] font-bold tracking-wide text-[#0F1E46]">HABAU INFRA</p><h1 className="text-2xl font-black tracking-tight">BAUTAGESBERICHT</h1><p className="text-sm text-[#0F1E46]/70">{d.projekt || "—"}</p></div>
+              <div>{_logo ? <img src={_logo.src} alt={_prof.firma || "Logo"} className="mb-1 h-9 w-auto" /> : (_prof.firma ? <p className="text-[11px] font-bold tracking-wide text-[#0F1E46]">{_prof.firma}</p> : null)}<h1 className="text-2xl font-black tracking-tight">BAUTAGESBERICHT</h1><p className="text-sm text-[#0F1E46]/70">{d.projekt || "—"}</p></div>
               <div className="text-sm sm:text-right"><p className="font-bold">{dateDE(d.datum)}</p><p className="text-[#0F1E46]/70">{W?.label} · {d.tempMin || "–"}° / {d.tempMax || "–"}° C</p>{(d.arbeitStart || d.arbeitEnde) && <p className="text-[#0F1E46]/70">Arbeitszeit: {d.arbeitStart || "–"}–{d.arbeitEnde || "–"}</p>}{d.gewerk && <p className="text-[#0F1E46]/70">Gewerk: {d.gewerk}</p>}{d.bauleiter && <p className="text-[#0F1E46]/70">Bauleiter: {d.bauleiter}</p>}</div>
             </div>
             <div className="mb-5 flex flex-wrap gap-4 text-sm">
@@ -1800,7 +1831,7 @@ export default function App() {
               </div>
             )}
 
-            <p className="mt-6 border-t border-[#C8D2E6] pt-3 text-center text-[10px] uppercase tracking-[0.3em] text-[#0F1E46]/70">HABAU INFRA | BAUTAGESBERICHT | © 2026</p>
+            <p className="mt-6 border-t border-[#C8D2E6] pt-3 text-center text-[10px] uppercase tracking-[0.3em] text-[#0F1E46]/70">{brandFoot("BAUTAGESBERICHT | © 2026")}</p>
           </div>
         </div>
       </Shell>
@@ -2044,7 +2075,7 @@ export default function App() {
         )}
       </main>
 
-      <p className="px-4 pb-6 text-center text-[10px] uppercase tracking-[0.3em] text-[#0F1E46]/70">HABAU INFRA | BAUTAGESBERICHT | © 2026</p>
+      <p className="px-4 pb-6 text-center text-[10px] uppercase tracking-[0.3em] text-[#0F1E46]/70">{brandFoot("BAUTAGESBERICHT | © 2026")}</p>
       {copyOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#0F1E46]/50 sm:items-center sm:p-4" onClick={() => setCopyOpen(false)}>
           <div className="max-h-[85vh] w-full max-w-lg overflow-auto rounded-sm bg-white p-5" onClick={(e) => e.stopPropagation()}>
