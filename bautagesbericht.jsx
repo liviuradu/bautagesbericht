@@ -22,6 +22,8 @@ async function sbLoadLists() {
   return rows[0]?.data || null;
 }
 async function sbSaveLists(lists, token) {
+  const { personen, nuAnsprech, ...shared } = lists; // Namen/Ansprechpartner nur lokal, nie auf den Server
+  lists = shared;
   const r = await fetch(`${SUPABASE_URL}/rest/v1/app_lists?on_conflict=id`, {
     method: "POST",
     headers: { ...sbHeaders(token), Prefer: "resolution=merge-duplicates,return=minimal" },
@@ -172,7 +174,7 @@ const DEF_BAS = BAS_GROUPS.flatMap(([group, items]) =>
 const BAS_LV = Object.fromEntries(Object.entries(BAS_EXTRA).filter(([, v]) => v.lv).map(([k, v]) => [k, { lv: v.lv, me: v.me }]));
 
 /* Pflichtangaben je Leistung (einstellbar unter Einstellungen → Pflichtfelder) */
-const DEF_PFLICHT = { sektion: true, vorhaben: true, taetigkeit: true, bas: true, beschreibung: true, menge: true, personal: true, geraete: false };
+const DEF_PFLICHT = { sektion: true, vorhaben: true, taetigkeit: true, bas: true, beschreibung: true, menge: true, personal: true, geraete: false, ebene5: false, ebene6: false };
 
 const defaultLists = () => ({
   sektionen: [...DEF_SEKTIONEN], taetigkeiten: [...DEF_TAETIGKEITEN], rollen: [...DEF_ROLLEN],
@@ -180,6 +182,9 @@ const defaultLists = () => ({
   bas: DEF_BAS.map((b) => ({ ...b })), geraete: DEF_GERAETE.map((g) => ({ typ: g.typ, units: [...g.units] })),
   pflicht: { ...DEF_PFLICHT },
   profil: { ...DEF_PROFIL, ort2Optionen: [...DEF_PROFIL.ort2Optionen] },
+  ebene5: [], ebene6: [],
+  personen: [], personalSpalten: ["", ""], nuAnsprech: {},
+  geraeteSpalten: ["", ""], geraeteInfo: {},
 });
 
 // Sektion-Stammdaten (km, Bauwerke, Segment, Bauabschnitt) – als Info beim Auswählen.
@@ -211,21 +216,35 @@ const sektInfo = (name) => SEKTION_INFO[name] || null;
 /* ===================== Projektprofil: was je Projekt verschieden ist ===================== */
 const DEF_PROFIL = {
   typ: "suedlink", projekt: "SuedLink Los 3",
-  ort1: "Sektion",                                   // Bezeichnung der Ortsangabe (Liste "sektionen")
+  ort1: "Sektion", ort1Aktiv: true,                  // Bezeichnung der Ortsangabe (Liste "sektionen")
   ort2Aktiv: true, ort2: "Vorhaben", ort2Optionen: ["West", "Ost"],
   ort2Ueb: true, ort2UebLabel: "Vorhabenübergreifend", // zusätzliche Auswahl "gilt für alle"
   stationAktiv: false, station: "Station (km von – bis)",
-  schluessel: "BAS",                                 // Bezeichnung des Leistungs-/Kostenschlüssels
+  schluessel: "BAS", basAktiv: true,                 // Bezeichnung des Leistungs-/Kostenschlüssels
+  taetLabel: "Tätigkeit", taetAktiv: true,
+  e5Label: "Ebene 5", e5Aktiv: false, e6Label: "Ebene 6", e6Aktiv: false,
 };
+/* Die 6 Ebenen einer Leistung: feste Schlüssel (= Feld in der Position), nur Bezeichnung/Aktiv/Pflicht/Liste sind einstellbar */
+const LEVELS = [
+  { key: "sektion", akt: "ort1Aktiv", lab: "ort1", def: "Sektion" },
+  { key: "vorhaben", akt: "ort2Aktiv", lab: "ort2", def: "Vorhaben" },
+  { key: "taetigkeit", akt: "taetAktiv", lab: "taetLabel", def: "Tätigkeit", list: "taetigkeiten", ph: "Unterboden ausheben" },
+  { key: "bas", akt: "basAktiv", lab: "schluessel", def: "BAS" },
+  { key: "ebene5", akt: "e5Aktiv", lab: "e5Label", def: "Ebene 5", list: "ebene5", ph: "Eintrag" },
+  { key: "ebene6", akt: "e6Aktiv", lab: "e6Label", def: "Ebene 6", list: "ebene6", ph: "Eintrag" },
+];
 const PROFIL_TYPEN = [
   { key: "linie", name: "Linienbaustelle", was: "Straße, Autobahn, Gleis, Leitung, Kanal", ort1: "Abschnitt", ort2Aktiv: true, ort2: "Fahrtrichtung / Seite", ort2Optionen: ["Richtung 1", "Richtung 2"], ort2Ueb: true, ort2UebLabel: "Beide Richtungen", stationAktiv: true, station: "Station (km von – bis)", beispiel: ["Abschnitt 1", "Abschnitt 2", "Abschnitt 3"] },
-  { key: "suedlink", name: "Kabeltrasse (SuedLink)", was: "Sektionen, Vorhaben West / Ost", ort1: "Sektion", ort2Aktiv: true, ort2: "Vorhaben", ort2Optionen: ["West", "Ost"], ort2Ueb: true, ort2UebLabel: "Vorhabenübergreifend", stationAktiv: false, station: "Station (km von – bis)", beispiel: DEF_SEKTIONEN },
+  { key: "suedlink", name: "Kabeltrasse", was: "Sektionen, Vorhaben West / Ost", ort1: "Sektion", ort2Aktiv: true, ort2: "Vorhaben", ort2Optionen: ["West", "Ost"], ort2Ueb: true, ort2UebLabel: "Vorhabenübergreifend", stationAktiv: false, station: "Station (km von – bis)", beispiel: DEF_SEKTIONEN },
   { key: "bruecke", name: "Brücke / Ingenieurbau", was: "Widerlager, Pfeiler, Überbau, Teilbauwerke", ort1: "Bauteil", ort2Aktiv: true, ort2: "Teilbauwerk", ort2Optionen: ["Teilbauwerk 1", "Teilbauwerk 2"], ort2Ueb: true, ort2UebLabel: "Beide Teilbauwerke", stationAktiv: true, station: "Achse", beispiel: ["Widerlager", "Pfeiler", "Überbau", "Kappen", "Baugrube"] },
   { key: "hochbau", name: "Hochbau", was: "Gebäude, Bauteile, Geschosse", ort1: "Gebäude / Bauteil", ort2Aktiv: true, ort2: "Geschoss", ort2Optionen: ["UG", "EG", "1. OG", "2. OG", "Dach"], ort2Ueb: true, ort2UebLabel: "Mehrere Geschosse", stationAktiv: true, station: "Achse / Raum", beispiel: ["Haus A", "Haus B", "Tiefgarage", "Außenanlagen"] },
   { key: "flaeche", name: "Flächenbaustelle", was: "Erdbau, Baufeld, Deponie, Außenanlagen", ort1: "Baufeld", ort2Aktiv: false, ort2: "Teilfläche", ort2Optionen: [], ort2Ueb: false, ort2UebLabel: "Gesamte Fläche", stationAktiv: false, station: "Lage", beispiel: ["Baufeld 1", "Baufeld 2", "Baufeld 3"] },
 ];
 let _prof = DEF_PROFIL; // aktives Profil für die Export-Funktionen (wird von App gesetzt)
 const ort2Text = (p) => (p.vorhabenUeb === "Ja" ? _prof.ort2UebLabel : (p.vorhaben || ""));
+/* Ortszeile einer Position (alle aktiven Ebenen außer dem Schlüssel) – einzige Stelle für diese Anzeige */
+const posOrt = (p) => [p.sektion, ort2Text(p), p.station, p.ebene5, p.ebene6].filter(Boolean).join(" · ");
+const posZeile = (p) => [posOrt(p), p.taetigkeit].filter(Boolean).join(" · ") || "—";
 
 const EINHEITEN = ["m", "lfm", "m²", "m³", "t", "kg", "Stk", "h", "psch"];
 const WETTER = [
@@ -264,30 +283,49 @@ function fileToJpeg(file, max = 1600, q = 0.75) {
 }
 
 /* ===================== Listen <-> Excel ===================== */
-const LIST_SHEETS = [["sektionen", "Sektionen", "Sektion"], ["taetigkeiten", "Tätigkeiten", "Tätigkeit"], ["rollen", "Rollen", "Rolle"], ["nachunternehmer", "Nachunternehmer", "Nachunternehmer"]];
+const LIST_SHEETS = [["sektionen", "Sektionen", "Sektion"], ["taetigkeiten", "Tätigkeiten", "Tätigkeit"], ["rollen", "Rollen", "Rolle"], ["ebene5", "Ebene 5", "Ebene 5"], ["ebene6", "Ebene 6", "Ebene 6"]];
+const PROF_BOOL = ["ort1Aktiv", "ort2Aktiv", "ort2Ueb", "stationAktiv", "taetAktiv", "basAktiv", "e5Aktiv", "e6Aktiv"];
+const PROF_STR = ["typ", "projekt", "ort1", "ort2", "ort2UebLabel", "station", "schluessel", "taetLabel", "e5Label", "e6Label"];
 function listsToWorkbook(l) {
   const wb = XLSX.utils.book_new();
-  LIST_SHEETS.forEach(([key, sheet, head]) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[head], ...(l[key] || []).filter(Boolean).map((x) => [x])]), sheet));
-  const g = [["Gerätetyp", "Gerät (genau)"]];
-  (l.geraete || []).filter((x) => x.typ).forEach((x) => { const u = (x.units || []).filter(Boolean); if (u.length === 0) g.push([x.typ, ""]); else u.forEach((n) => g.push([x.typ, n])); });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(g), "Geräte");
-  const b = [["Code", "Bezeichnung", "Gruppe", "Was steckt drin", "Wann wählen"], ...(l.bas || []).filter((x) => x.code).map((x) => [String(x.code), x.name || "", x.group || "", x.desc || "", x.wann || ""])];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(b), "BAS");
+  const add = (name, aoa) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), name);
+  LIST_SHEETS.forEach(([key, sheet, head]) => add(sheet, [[head], ...(l[key] || []).filter(Boolean).map((x) => [x])]));
+  const nu = (l.nachunternehmer || []).filter(Boolean); const na = l.nuAnsprech || {};
+  add("Nachunternehmer", [["Name", "Ansprechpartner"], ...nu.map((x) => [x, na[x] || ""])]);
+  const ps = l.personalSpalten || ["", ""];
+  add("Personen", [["Name", "Rolle", ps[0] || "", ps[1] || ""], ...(l.personen || []).filter((x) => x.name).map((x) => [x.name, x.rolle || "", x.c1 || "", x.c2 || ""])]);
+  const gs = l.geraeteSpalten || ["", ""]; const gi = l.geraeteInfo || {};
+  const g = [["Typ", "Bezeichnung", "Inventarnummer", gs[0] || "", gs[1] || ""]];
+  const gRow = (t, u) => { const i = gi[t + "||" + u] || {}; g.push([t, u, i.inv || "", i.c1 || "", i.c2 || ""]); };
+  (l.geraete || []).filter((x) => x.typ).forEach((x) => { const u = (x.units || []).filter(Boolean); if (u.length === 0) gRow(x.typ, ""); else u.forEach((n) => gRow(x.typ, n)); });
+  add("Geräte", g);
+  add("BAS", [["Code", "Bezeichnung", "Gruppe", "Was steckt drin", "Wann wählen"], ...(l.bas || []).filter((x) => x.code).map((x) => [String(x.code), x.name || "", x.group || "", x.desc || "", x.wann || ""])]);
   const pr = { ...DEF_PROFIL, ...(l.profil || {}) }; const pfl = { ...DEF_PFLICHT, ...(l.pflicht || {}) };
   const jn = (v) => (v ? "ja" : "nein");
-  const pRows = [["Einstellung", "Wert"], ["typ", pr.typ], ["projekt", pr.projekt], ["ort1", pr.ort1], ["ort2Aktiv", jn(pr.ort2Aktiv)], ["ort2", pr.ort2], ["ort2Optionen", (pr.ort2Optionen || []).filter(Boolean).join("; ")],
-    ["ort2Ueb", jn(pr.ort2Ueb)], ["ort2UebLabel", pr.ort2UebLabel], ["stationAktiv", jn(pr.stationAktiv)], ["station", pr.station], ["schluessel", pr.schluessel],
-    ...Object.keys(DEF_PFLICHT).map((k) => ["pflicht." + k, jn(pfl[k])])];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(pRows), "Projekt");
+  add("Projekt", [["Einstellung", "Wert"], ...PROF_STR.slice(0, 3).map((k) => [k, pr[k]]), ["ort1Aktiv", jn(pr.ort1Aktiv)], ["ort2Aktiv", jn(pr.ort2Aktiv)], ["ort2", pr.ort2], ["ort2Optionen", (pr.ort2Optionen || []).filter(Boolean).join("; ")],
+    ["ort2Ueb", jn(pr.ort2Ueb)], ["ort2UebLabel", pr.ort2UebLabel], ["stationAktiv", jn(pr.stationAktiv)], ["station", pr.station], ["schluessel", pr.schluessel], ["basAktiv", jn(pr.basAktiv)],
+    ["taetLabel", pr.taetLabel], ["taetAktiv", jn(pr.taetAktiv)], ["e5Label", pr.e5Label], ["e5Aktiv", jn(pr.e5Aktiv)], ["e6Label", pr.e6Label], ["e6Aktiv", jn(pr.e6Aktiv)],
+    ...Object.keys(DEF_PFLICHT).map((k) => ["pflicht." + k, jn(pfl[k])])]);
   return wb;
 }
 function workbookToLists(wb, cur) {
   const out = { ...cur }; const found = [];
   const rows = (name) => { const ws = wb.Sheets[name]; return ws ? XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }).slice(1) : null; };
+  const head = (name) => { const ws = wb.Sheets[name]; return ws ? (XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" })[0] || []) : []; };
   const str = (v) => String(v ?? "").trim();
   LIST_SHEETS.forEach(([key, sheet]) => { const r = rows(sheet); if (r) { out[key] = r.map((x) => str(x[0])).filter(Boolean); found.push(sheet); } });
+  const nu = rows("Nachunternehmer");
+  if (nu) { const names = []; const an = {}; nu.forEach((x) => { const n = str(x[0]); if (!n) return; names.push(n); if (str(x[1])) an[n] = str(x[1]); }); out.nachunternehmer = names; out.nuAnsprech = an; found.push("Nachunternehmer"); }
+  const pe = rows("Personen");
+  if (pe) { const h = head("Personen"); out.personalSpalten = [str(h[2]), str(h[3])]; out.personen = pe.map((x) => ({ name: str(x[0]), rolle: str(x[1]), c1: str(x[2]), c2: str(x[3]) })).filter((x) => x.name); found.push("Personen"); }
   const g = rows("Geräte");
-  if (g) { const m = new Map(); g.forEach((x) => { const t = str(x[0]); if (!t) return; if (!m.has(t)) m.set(t, []); const u = str(x[1]); if (u) m.get(t).push(u); }); out.geraete = [...m.entries()].map(([typ, units]) => ({ typ, units })); found.push("Geräte"); }
+  if (g) {
+    const h = head("Geräte"); const m = new Map(); const info = {};
+    g.forEach((x) => { const t = str(x[0]); if (!t) return; if (!m.has(t)) m.set(t, []); const u = str(x[1]); if (u && !m.get(t).includes(u)) m.get(t).push(u);
+      const i = { inv: str(x[2]), c1: str(x[3]), c2: str(x[4]) }; const k = t + "||" + u;
+      if ((i.inv || i.c1 || i.c2) && !info[k]) info[k] = i; });
+    out.geraete = [...m.entries()].map(([typ, units]) => ({ typ, units })); out.geraeteInfo = info; out.geraeteSpalten = [str(h[3]), str(h[4])]; found.push("Geräte");
+  }
   const b = rows("BAS");
   if (b) { out.bas = b.map((x) => ({ code: str(x[0]), name: str(x[1]), group: str(x[2]), desc: str(x[3]), wann: str(x[4]) })).filter((x) => x.code); found.push("BAS"); }
   const pj = rows("Projekt");
@@ -297,9 +335,9 @@ function workbookToLists(wb, cur) {
     pj.forEach((x) => {
       const k = str(x[0]); const v = x[1];
       if (k.startsWith("pflicht.") && k.slice(8) in DEF_PFLICHT) pfl[k.slice(8)] = yes(v);
-      else if (["ort2Aktiv", "ort2Ueb", "stationAktiv"].includes(k)) pr[k] = yes(v);
+      else if (PROF_BOOL.includes(k)) pr[k] = yes(v);
       else if (k === "ort2Optionen") pr.ort2Optionen = str(v).split(";").map((t) => t.trim()).filter(Boolean);
-      else if (["typ", "projekt", "ort1", "ort2", "ort2UebLabel", "station", "schluessel"].includes(k) && str(v)) pr[k] = str(v);
+      else if (PROF_STR.includes(k) && str(v)) pr[k] = str(v);
     });
     out.profil = pr; out.pflicht = pfl; found.push("Projekt");
   }
@@ -398,10 +436,8 @@ const exportExcel = (day, positions, kurz) => {
     downloadBlob(new Blob([out], { type: "application/octet-stream" }), fileBase(day) + ".xlsx");
   }
 };
-async function buildPdfBlob(day, positions, kurz, fotos) {
-  const { jsPDF } = await import("jspdf");
-  const autoTable = (await import("jspdf-autotable")).default;
-  const doc = new jsPDF({ unit: "pt", format: "a4" });
+/* Rendert EINEN Tagesbericht ab der aktuellen Seite von doc (Einzel-PDF und Projekt-PDF nutzen dieselbe Funktion). */
+function renderDayPdf(doc, autoTable, day, positions, kurz, fotos) {
   doc.setTextColor(15, 30, 70);
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
@@ -425,14 +461,14 @@ async function buildPdfBlob(day, positions, kurz, fotos) {
 
   autoTable(doc, {
     startY: y,
-    head: [["Nr", _prof.schluessel, _prof.ort1 + (_prof.ort2Aktiv ? " · " + _prof.ort2 : ""), "Tätigkeit", "Beschreibung", "Menge", "P-Std", "G-Std"]],
+    head: [["Nr", `${_prof.schluessel} / ${_prof.ort1}${_prof.ort2Aktiv ? " · " + _prof.ort2 : ""}`.replace(/^ \/ /, ""), "Tätigkeit", "Beschreibung", "Menge", "P-Std", "G-Std"]],
     body: positions.map((p, i) => [
-      i + 1, p.bas || "—", [p.sektion, ort2Text(p), p.station].filter(Boolean).join(" · "),
+      i + 1, [p.bas, posOrt(p)].filter(Boolean).join("\n") || "—",
       (p.taetigkeit || "") + (p.nachunternehmer ? "\nNU: " + p.nachunternehmer : ""), p.beschreibung || "", num(p.menge) ? `${fmt(num(p.menge))} ${p.einheit || ""}` : "", fmt(phOf(p)), fmt(ghOf(p)),
     ]),
     styles: { fontSize: 8, cellPadding: 3, valign: "top", overflow: "linebreak" },
     headStyles: { fillColor: [15, 30, 70], textColor: 255, fontSize: 8 },
-    columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 42 }, 5: { halign: "right", cellWidth: 50 }, 6: { halign: "right", cellWidth: 32 }, 7: { halign: "right", cellWidth: 32 } },
+    columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 100 }, 4: { halign: "right", cellWidth: 50 }, 5: { halign: "right", cellWidth: 32 }, 6: { halign: "right", cellWidth: 32 } },
     margin: { left: M, right: M },
   });
   y = doc.lastAutoTable.finalY + 10;
@@ -484,17 +520,60 @@ async function buildPdfBlob(day, positions, kurz, fotos) {
     list.forEach((f, i) => {
       let ih = 150;
       try { const pr = doc.getImageProperties(f.data); ih = Math.min(220, cw * pr.height / pr.width); } catch (e) {}
-      if (col === 0 && y + ih + 24 > H - 30) { doc.addPage(); y = 46; }
+      if (col === 0 && y + ih + 36 > H - 40) { doc.addPage(); y = 46; }
       const x = M + col * (cw + 12);
       try { doc.addImage(f.data, "JPEG", x, y, cw, ih); } catch (e) {}
       doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-      doc.text(doc.splitTextToSize(`${f.still ? "Stillstand " + f.still + ": " : (i + 1) + ". "}${f.text || f.name || ""}`, cw), x, y + ih + 10);
-      rowH = Math.max(rowH, ih + 26);
+      const pos = f.posId ? positions.findIndex((p) => p.id === f.posId) : -1;
+      const cap = f.posId ? `Leistung Nr. ${pos + 1} – ${pos >= 0 ? (positions[pos].bas ? kurz(positions[pos].bas) : positions[pos].taetigkeit || "") : ""}${f.text || f.name ? ": " + (f.text || f.name) : ""}` : `${f.still ? "Stillstand " + f.still + ": " : (i + 1) + ". "}${f.text || f.name || ""}`;
+      const capLines = doc.splitTextToSize(cap, cw).slice(0, 3);
+      doc.text(capLines, x, y + ih + 10);
+      rowH = Math.max(rowH, ih + 14 + capLines.length * 10);
       if (col === 1) { y += rowH; rowH = 0; col = 0; } else col = 1;
     });
   };
-  drawFotos("Fotos zu Stillstandszeiten", (fotos || []).filter((f) => f.still));
-  drawFotos("Fotos", (fotos || []).filter((f) => !f.still));
+  const fl = fotos || [];
+  const byPos = fl.filter((f) => f.posId).sort((a, b) => positions.findIndex((p) => p.id === a.posId) - positions.findIndex((p) => p.id === b.posId));
+  drawFotos("Fotos zu Leistungen", byPos);
+  drawFotos("Fotos zu Stillstandszeiten", fl.filter((f) => f.still && !f.posId));
+  drawFotos("Fotos", fl.filter((f) => !f.still && !f.posId));
+}
+function addPageFooters(doc, label) {
+  const W = doc.internal.pageSize.getWidth(); const H = doc.internal.pageSize.getHeight(); const n = doc.getNumberOfPages();
+  for (let i = 1; i <= n; i++) {
+    doc.setPage(i); doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(103, 123, 164);
+    doc.text(label, 40, H - 18); doc.text(`Seite ${i} / ${n}`, W - 40, H - 18, { align: "right" });
+  }
+}
+async function buildPdfBlob(day, positions, kurz, fotos) {
+  const { jsPDF } = await import("jspdf");
+  const autoTable = (await import("jspdf-autotable")).default;
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  renderDayPdf(doc, autoTable, day, positions, kurz, fotos);
+  addPageFooters(doc, "HABAU INFRA | Bautagesbericht " + dateDE(day.datum));
+  return doc.output("blob");
+}
+/* Projekt-PDF: Deckblatt + Inhaltsverzeichnis, danach jeder Bericht auf neuer Seite. entries = [{day, positions, fotos}] (älteste zuerst) */
+async function buildProjectPdfBlob(entries, kurz, projekt) {
+  const { jsPDF } = await import("jspdf");
+  const autoTable = (await import("jspdf-autotable")).default;
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const W = doc.internal.pageSize.getWidth(); const M = 40;
+  const von = entries[0].day.datum, bis = entries[entries.length - 1].day.datum;
+  doc.setTextColor(15, 30, 70);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text("HABAU INFRA", M, 60);
+  doc.setFontSize(26); doc.text("Bautagesberichte", M, 100);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(14); doc.text(String(projekt || ""), M, 124);
+  doc.setFontSize(10); doc.text(`Zeitraum: ${dateDE(von)} – ${dateDE(bis)}`, M, 144); doc.text(`Anzahl Berichte: ${entries.length}`, M, 158);
+  doc.setDrawColor(250, 210, 0); doc.setLineWidth(2); doc.line(M, 170, W - M, 170);
+  autoTable(doc, {
+    startY: 186, head: [["Datum", "Leistungen", "Personal-Std", "Geräte-Std"]],
+    body: entries.map((e) => [dateDE(e.day.datum), String(e.positions.length), fmt(e.positions.reduce((a, p) => a + phOf(p), 0)), fmt(e.positions.reduce((a, p) => a + ghOf(p), 0))]),
+    styles: { fontSize: 9, cellPadding: 3 }, headStyles: { fillColor: [15, 30, 70], textColor: 255 },
+    columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" } }, margin: { left: M, right: M },
+  });
+  for (const e of entries) { doc.addPage(); renderDayPdf(doc, autoTable, e.day, e.positions, kurz, e.fotos); }
+  addPageFooters(doc, "HABAU INFRA | Bautagesberichte " + (projekt || ""));
   return doc.output("blob");
 }
 
@@ -520,17 +599,19 @@ async function buildEml(subject, text, files) {
   return new Blob([parts.join("\r\n")], { type: "message/rfc822" });
 }
 
-/* Senden: PDF + XML. Handy -> Teilen-Menü (Outlook wählen). PC -> E-Mail-Entwurf für Outlook. Rückgabe: was passiert ist. */
+/* Senden: PDF + Excel + XML. Handy -> Teilen-Menü (Outlook wählen). PC -> E-Mail-Entwurf für Outlook. Rückgabe: was passiert ist. */
 async function shareReport(day, positions, kurz, fotos) {
   const base = fileBase(day);
   const xmlFile = new File([buildXML(day, positions, kurz)], base + ".xml", { type: "application/xml" });
   let pdfFile = null;
   try { const pdf = await buildPdfBlob(day, positions, kurz, fotos); pdfFile = new File([pdf], base + ".pdf", { type: "application/pdf" }); } catch (e) { /* PDF nicht möglich -> nur XML */ }
-  const files = pdfFile ? [pdfFile, xmlFile] : [xmlFile];
+  let xlsxFile = null;
+  try { xlsxFile = new File([XLSX.write(buildWorkbook(day, positions, kurz), { bookType: "xlsx", type: "array" })], base + ".xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }); } catch (e) { /* Excel nicht möglich */ }
+  const files = [pdfFile, xlsxFile, xmlFile].filter(Boolean);
   const subject = `Bautagesbericht ${day.projekt || ""} ${dateDE(day.datum)}`.replace(/\s+/g, " ").trim();
-  const text = `Guten Tag,\n\nanbei der Bautagesbericht vom ${dateDE(day.datum)} (${positions.length} Leistungen) als PDF und als XML.\n\nViele Grüße${day.bauleiter ? "\n" + day.bauleiter : ""}`;
+  const text = `Guten Tag,\n\nanbei der Bautagesbericht vom ${dateDE(day.datum)} (${positions.length} Leistungen) als PDF, Excel und XML.\n\nViele Grüße${day.bauleiter ? "\n" + day.bauleiter : ""}`;
   const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
-  // 1) Handy: natives Teilen-Menü – Outlook wählen, beide Dateien sind angehängt
+  // 1) Handy: natives Teilen-Menü – Outlook wählen, alle Dateien sind angehängt
   if (mobile && navigator.canShare && navigator.canShare({ files })) {
     try { await navigator.share({ files, title: subject, text }); return "share"; }
     catch (e) { if (e && e.name === "AbortError") return "abort"; }
@@ -546,7 +627,7 @@ async function shareReport(day, positions, kurz, fotos) {
 
 const emptyDay = (projekt = DEF_PROFIL.projekt) => ({ datum: today(), projekt, bauleiter: "", gewerk: "", arbeitStart: "", arbeitEnde: "", wetter: "heiter", tempMin: "", tempMax: "", stillstand: [], vorkommnisse: [], fotos: [] });
 const emptyDraft = () => ({
-  id: uid(), sektion: "", vorhabenUeb: "Nein", vorhaben: "", station: "", taetigkeit: "", nachunternehmer: "", bas: "", beschreibung: "", menge: "", einheit: "",
+  id: uid(), sektion: "", vorhabenUeb: "Nein", vorhaben: "", station: "", ebene5: "", ebene6: "", taetigkeit: "", nachunternehmer: "", bas: "", beschreibung: "", menge: "", einheit: "",
   personal: [{ id: uid(), rolle: "", anzahl: "", stunden: "" }],
   geraete: [{ id: uid(), typ: "", geraet: "", anzahl: "1", stunden: "" }],
 });
@@ -794,54 +875,6 @@ function ListTable({ items, onChange, placeholder }) {
   );
 }
 
-/* Geräte als Tabelle: Gerätetyp | Genaue Geräte (mit ; getrennt) | Anz. | Löschen */
-function GeraeteTable({ geraete, onChange }) {
-  const toRaw = (g) => (g.units || []).join("; ");
-  const [raw, setRaw] = useState(() => geraete.map(toRaw));
-  const lastEmitted = React.useRef(geraete);
-  const wrap = React.useRef(null);
-  const focusRow = React.useRef(-1);
-  const parse = (t) => t.split(";").map((u) => u.trim()).filter(Boolean);
-  useEffect(() => { // von außen geändert (Excel-Import, Standard) → Rohtext neu aufbauen
-    if (geraete !== lastEmitted.current) { lastEmitted.current = geraete; setRaw(geraete.map(toRaw)); }
-  }, [geraete]);
-  useEffect(() => {
-    if (focusRow.current < 0) return;
-    const el = wrap.current && wrap.current.querySelector(`[data-row="${focusRow.current}"]`);
-    focusRow.current = -1;
-    if (el) el.focus();
-  }, [geraete.length]);
-  const emit = (next, nextRaw) => { lastEmitted.current = next; setRaw(nextRaw); onChange(next); };
-  const setTyp = (i, typ) => emit(geraete.map((g, k) => (k === i ? { ...g, typ } : g)), raw);
-  const setUnits = (i, t) => emit(geraete.map((g, k) => (k === i ? { ...g, units: parse(t) } : g)), raw.map((r, k) => (k === i ? t : r)));
-  const del = (i) => emit(geraete.filter((_, k) => k !== i), raw.filter((_, k) => k !== i));
-  const add = () => { focusRow.current = geraete.length; emit([...geraete, { typ: "", units: [] }], [...raw, ""]); };
-  return (
-    <div ref={wrap}>
-      <div className="relative overflow-x-auto">
-        <table className="w-full min-w-[520px] table-fixed border-collapse text-sm">
-          <thead><tr className="bg-[#0F1E46] text-white">
-            <th className={`${TH_CLS} w-[32%]`}>Gerätetyp</th><th className={TH_CLS}>Genaue Geräte <span className="font-normal normal-case tracking-normal text-white/70">(mit ; trennen)</span></th>
-            <th className={`${TH_CLS} w-14 text-right`}>Anz.</th><th className="w-12 px-1 py-2"><span className="sr-only">Löschen</span></th>
-          </tr></thead>
-          <tbody>
-            {geraete.map((g, i) => (
-              <tr key={i} className="border-b border-[#C8D2E6] align-top">
-                <td className="px-2 py-1.5"><input data-row={i} className={CELL_INPUT} value={g.typ} placeholder="z. B. Kettenbagger" onChange={(e) => setTyp(i, e.target.value)} /></td>
-                <td className="px-2 py-1.5"><input className={CELL_INPUT} value={raw[i] ?? ""} placeholder="CAT 320; Liebherr R 926" spellCheck={false} onChange={(e) => setUnits(i, e.target.value)} /></td>
-                <td className="px-2 py-1.5 pt-3 text-right tabular-nums text-[#0F1E46]">{(g.units || []).length}</td>
-                <td className="px-1 py-1.5 text-center"><button onClick={() => del(i)} className={DEL_BTN} aria-label="Zeile löschen"><Trash2 size={16} /></button></td>
-              </tr>
-            ))}
-            {geraete.length === 0 && <tr><td colSpan={4} className="px-2 py-3 text-sm text-[#677BA4]">Noch keine Gerätetypen.</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      <AddBtn onClick={add}>Zeile hinzufügen</AddBtn>
-    </div>
-  );
-}
-
 /* BAS als breite Tabelle */
 function BasTable({ bas, onChange }) {
   const [q, setQ] = useState("");
@@ -901,16 +934,40 @@ const ProfRow = ({ title, hint, children }) => (
     <div className="min-w-0">{children}</div>
   </div>
 );
+const EMPTY_OBJ = {};
+const CAP = "mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[#0F1E46]/70";
 
-/* Tab "Projekt": Projekttyp wählen und alles Projektspezifische einstellen */
-function ProjektTab({ prof, onProfil, onTyp }) {
+/* Eine Ebene (Zeile): Bezeichnung, Aktiv, Pflicht, Liste bearbeiten – Listeneditor klappt direkt darunter auf */
+function LevelRow({ lv, nr, prof, pf, count, isOpen, onToggle, onProfil, onPflicht, children }) {
+  const aktiv = !!prof[lv.akt];
+  return (
+    <div data-level={lv.key} data-pflicht={lv.key} className="border-b border-[#C8D2E6] py-3">
+      <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
+        <span className="w-6 pb-2.5 text-sm font-bold tabular-nums text-[#677BA4]">{nr}</span>
+        <div className="min-w-[150px] flex-1"><span className={CAP}>Bezeichnung</span><input className={CELL_INPUT} value={prof[lv.lab] ?? ""} onChange={(e) => onProfil({ [lv.lab]: e.target.value })} placeholder={lv.def} aria-label={`Bezeichnung Ebene ${nr}`} /></div>
+        <div><span className={CAP}>Aktiv</span><JaNein value={aktiv} onChange={(v) => onProfil({ [lv.akt]: v })} /></div>
+        <div className={`min-w-[180px] ${aktiv ? "" : "pointer-events-none opacity-40"}`}><span className={CAP}>Angabe</span><PflichtToggle value={pf[lv.key]} onChange={(v) => onPflicht(lv.key, v)} /></div>
+        <button type="button" data-open={lv.key} aria-expanded={isOpen} onClick={onToggle} className="inline-flex min-h-[40px] items-center gap-2 rounded-sm bg-[#FAD200] px-3 text-sm font-bold text-[#0F1E46] transition hover:bg-[#FCE466]"><ListChecks size={15} />{isOpen ? "Liste schließen" : "Liste bearbeiten"} ({count})</button>
+      </div>
+      {isOpen && <div className="mt-3 min-w-0 border-l-4 border-[#DAE1F0] pl-3 sm:pl-4">{children}</div>}
+    </div>
+  );
+}
+
+/* Tab "Projekt": Vorlage wählen und die 6 Ebenen einer Leistung einstellen */
+function ProjektTab({ prof, pf, lists, open, setOpen, onProfil, onPflicht, onList, onTyp }) {
   const [mitBeispiel, setMitBeispiel] = useState(false);
   const opts = (prof.ort2Optionen || []).filter((x) => x.trim());
+  const cnt = (a) => (a || []).filter((x) => String(x).trim()).length;
+  const counts = { sektion: cnt(lists.sektionen), vorhaben: opts.length, taetigkeit: cnt(lists.taetigkeiten), bas: (lists.bas || []).filter((b) => b.code).length, ebene5: cnt(lists.ebene5), ebene6: cnt(lists.ebene6) };
+  const lab = (lv) => prof[lv.lab] || lv.def;
+  const tog = (k) => setOpen(open === k ? "" : k);
+  const WEITERE = [["beschreibung", "Beschreibung", "Freitext: was wurde konkret ausgeführt"], ["menge", "Menge und Einheit", "Menge größer 0 mit Einheit"], ["personal", "Personal", "Mindestens eine Person mit Rolle, Anzahl und Stunden"], ["geraete", "Geräte", "Mindestens ein Gerät mit Anzahl und Betriebsstunden"]];
   return (
     <div className="space-y-4">
       <section className="min-w-0 rounded-sm border border-[#C8D2E6] border-l-4 border-l-[#FAD200] bg-white p-4">
-        <h2 className="text-sm font-bold text-[#0F1E46]">1 · Projekttyp wählen</h2>
-        <p className="mt-1 text-sm text-[#0F1E46]/70">Der Typ stellt die Bezeichnungen und Auswahlfelder passend ein. Danach kannst du unten alles anpassen.</p>
+        <h2 className="text-sm font-bold text-[#0F1E46]">1 · Vorlage wählen (optional)</h2>
+        <p className="mt-1 text-sm text-[#0F1E46]/70">Eine Vorlage füllt die Ebenen passend vor. Danach kannst du unten alles anpassen.</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {PROFIL_TYPEN.map((t) => (
             <div key={t.key} data-typ={t.key} className={`rounded-sm border p-3 ${prof.typ === t.key ? "border-[#0F1E46] bg-[#DAE1F0]" : "border-[#C8D2E6] bg-white"}`}>
@@ -921,66 +978,196 @@ function ProjektTab({ prof, onProfil, onTyp }) {
             </div>
           ))}
         </div>
-        <label className="mt-3 flex items-start gap-2 text-sm text-[#0F1E46]"><input type="checkbox" className="mt-1" checked={mitBeispiel} onChange={(e) => setMitBeispiel(e.target.checked)} /><span>Beispiel-Einträge für die Ortsliste mit übernehmen <span className="text-[#C62828]">(ersetzt die jetzige Liste)</span></span></label>
+        <label className="mt-3 flex items-start gap-2 text-sm text-[#0F1E46]"><input type="checkbox" className="mt-1" checked={mitBeispiel} onChange={(e) => setMitBeispiel(e.target.checked)} /><span>Beispiel-Einträge für die erste Ebene mit übernehmen <span className="text-[#C62828]">(ersetzt die jetzige Liste)</span></span></label>
       </section>
 
       <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4">
         <h2 className="text-sm font-bold text-[#0F1E46]">2 · Einstellungen für dieses Projekt</h2>
         <ProfRow title="Projektname" hint="Steht im Kopf jedes neuen Tagesberichts."><input className={CELL_INPUT} value={prof.projekt} onChange={(e) => onProfil({ projekt: e.target.value })} placeholder="Name des Projekts" /></ProfRow>
-        <ProfRow title="Ort – erste Ebene" hint="Wie heißt die Ortsangabe? Zum Beispiel Sektion, Abschnitt, Bauteil, Gebäude, Baufeld. Die Einträge pflegst du im Reiter daneben."><input className={CELL_INPUT} value={prof.ort1} onChange={(e) => onProfil({ ort1: e.target.value })} placeholder="Sektion" /></ProfRow>
-        <ProfRow title="Ort – zweite Ebene" hint="Zusätzliche Auswahl, zum Beispiel Fahrtrichtung, Seite, Vorhaben, Teilbauwerk, Geschoss."><JaNein value={prof.ort2Aktiv} onChange={(v) => onProfil({ ort2Aktiv: v })} /></ProfRow>
-        {prof.ort2Aktiv && <>
-          <ProfRow title="Bezeichnung der zweiten Ebene"><input className={CELL_INPUT} value={prof.ort2} onChange={(e) => onProfil({ ort2: e.target.value })} placeholder="Fahrtrichtung" /></ProfRow>
-          <ProfRow title="Auswahlmöglichkeiten" hint="So viele, wie das Projekt braucht: zwei Richtungen, drei Teilbauwerke, fünf Geschosse …"><ListTable items={prof.ort2Optionen || []} onChange={(v) => onProfil({ ort2Optionen: v })} placeholder="z. B. Richtung Nord" /></ProfRow>
-          <ProfRow title="Auswahl „gilt für alle“" hint="Zusätzliche Schaltfläche, wenn eine Leistung mehrere oder alle betrifft."><div className="space-y-2"><JaNein value={prof.ort2Ueb} onChange={(v) => onProfil({ ort2Ueb: v })} />{prof.ort2Ueb && <input className={CELL_INPUT} value={prof.ort2UebLabel} onChange={(e) => onProfil({ ort2UebLabel: e.target.value })} placeholder="Beide Richtungen" />}</div></ProfRow>
-        </>}
+        <div className="pt-3">
+          <p className="text-sm font-semibold text-[#0F1E46]">Ebenen einer Leistung</p>
+          <p className="text-xs text-[#0F1E46]/70">Bis zu 6 Ebenen. Gib jeder Ebene einen Namen, schalte nicht benötigte aus und lege fest, ob die Angabe Pflicht ist. Die Auswahllisten pflegst du je Ebene mit „Liste bearbeiten“.</p>
+        </div>
+        {LEVELS.map((lv, i) => (
+          <LevelRow key={lv.key} lv={lv} nr={i + 1} prof={prof} pf={pf} count={counts[lv.key]} isOpen={open === lv.key} onToggle={() => tog(lv.key)} onProfil={onProfil} onPflicht={onPflicht}>
+            {lv.key === "vorhaben" ? (
+              <div className="space-y-4">
+                <div><p className="mb-1 text-sm font-semibold text-[#0F1E46]">Auswahlmöglichkeiten</p><ListTable items={prof.ort2Optionen || []} onChange={(v) => onProfil({ ort2Optionen: v })} placeholder="z. B. Richtung Nord" /></div>
+                <div><p className="text-sm font-semibold text-[#0F1E46]">Auswahl „gilt für alle“</p><p className="mb-2 text-xs text-[#0F1E46]/70">Zusätzliche Schaltfläche, wenn eine Leistung mehrere oder alle betrifft.</p><div className="space-y-2"><JaNein value={prof.ort2Ueb} onChange={(v) => onProfil({ ort2Ueb: v })} />{prof.ort2Ueb && <input className={CELL_INPUT} value={prof.ort2UebLabel} onChange={(e) => onProfil({ ort2UebLabel: e.target.value })} placeholder="Beide Richtungen" />}</div></div>
+              </div>
+            ) : lv.key === "bas" ? <BasTable bas={lists.bas} onChange={(v) => onList("bas", v)} />
+              : <ListTable items={lists[lv.list || "sektionen"] || []} onChange={(v) => onList(lv.list || "sektionen", v)} placeholder={lv.ph || "Sektion 1"} />}
+          </LevelRow>
+        ))}
         <ProfRow title="Freies Feld für die genaue Lage" hint="Zum Beispiel Station (km von – bis), Achse oder Raum. Freier Text, immer freiwillig."><div className="space-y-2"><JaNein value={prof.stationAktiv} onChange={(v) => onProfil({ stationAktiv: v })} />{prof.stationAktiv && <input className={CELL_INPUT} value={prof.station} onChange={(e) => onProfil({ station: e.target.value })} placeholder="Station (km von – bis)" />}</div></ProfRow>
-        <ProfRow title="Bezeichnung des Leistungsschlüssels" hint="Zum Beispiel BAS, Kostenstelle, LV-Position."><input className={CELL_INPUT} value={prof.schluessel} onChange={(e) => onProfil({ schluessel: e.target.value })} placeholder="BAS" /></ProfRow>
+        <div className="pt-3">
+          <p className="text-sm font-semibold text-[#0F1E46]">Weitere Pflichtfelder</p>
+          {WEITERE.map(([k, l, was]) => (
+            <div key={k} data-pflicht={k} className="grid gap-2 border-b border-[#C8D2E6] py-3 last:border-b-0 sm:grid-cols-[minmax(0,260px)_minmax(0,1fr)] sm:gap-4">
+              <div><p className="text-sm font-semibold text-[#0F1E46]">{l}</p><p className="text-xs text-[#0F1E46]/70">{was}</p></div>
+              <div><PflichtToggle value={pf[k]} onChange={(v) => onPflicht(k, v)} /></div>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="min-w-0 border-l-4 border-[#FAD200] bg-[#DAE1F0] p-4">
         <h2 className="text-sm font-bold text-[#0F1E46]">So sieht es beim Erfassen einer Leistung aus</h2>
         <div className="mt-2 space-y-2 text-sm text-[#0F1E46]">
-          <p><span className="font-bold">{prof.ort1 || "Ort"}:</span> Auswahl aus der Liste</p>
-          {prof.ort2Aktiv && <div className="flex flex-wrap items-center gap-2"><span className="font-bold">{prof.ort2}:</span>{opts.map((o) => <span key={o} className="rounded-sm border border-[#0F1E46] bg-white px-2 py-1 text-xs font-semibold">{o}</span>)}{prof.ort2Ueb && <span className="rounded-sm border border-[#0F1E46] bg-white px-2 py-1 text-xs font-semibold">{prof.ort2UebLabel}</span>}{opts.length === 0 && !prof.ort2Ueb && <span className="text-xs text-[#C62828]">Noch keine Auswahlmöglichkeit eingetragen.</span>}</div>}
+          {LEVELS.filter((lv) => prof[lv.akt]).map((lv) => lv.key === "vorhaben"
+            ? <div key={lv.key} className="flex flex-wrap items-center gap-2"><span className="font-bold">{lab(lv)}{pf[lv.key] ? " *" : ""}:</span>{opts.map((o) => <span key={o} className="rounded-sm border border-[#0F1E46] bg-white px-2 py-1 text-xs font-semibold">{o}</span>)}{prof.ort2Ueb && <span className="rounded-sm border border-[#0F1E46] bg-white px-2 py-1 text-xs font-semibold">{prof.ort2UebLabel}</span>}{opts.length === 0 && !prof.ort2Ueb && <span className="text-xs text-[#C62828]">Noch keine Auswahlmöglichkeit eingetragen.</span>}</div>
+            : <p key={lv.key}><span className="font-bold">{lab(lv)}{pf[lv.key] ? " *" : ""}:</span> Auswahl aus der Liste</p>)}
           {prof.stationAktiv && <p><span className="font-bold">{prof.station}:</span> freier Text</p>}
-          <p><span className="font-bold">{prof.schluessel || "Schlüssel"}:</span> Auswahl aus der Liste</p>
+          {LEVELS.every((lv) => !prof[lv.akt]) && <p className="text-xs text-[#677BA4]">Keine Ebene aktiv.</p>}
         </div>
       </section>
     </div>
   );
 }
 
-/* Tab "Pflichtfelder": alle Einstellungen in einer Tabelle */
-const PFLICHT_ROWS = [
-  ["sektion", "Sektion", "Ort der Leistung (erste Ebene)"],
-  ["vorhaben", "Vorhaben", "Ort der Leistung (zweite Ebene)"],
-  ["taetigkeit", "Tätigkeit", "Art der ausgeführten Arbeit"],
-  ["bas", "BAS", "Leistungs-/Kostenschlüssel"],
-  ["beschreibung", "Beschreibung", "Freitext: was wurde konkret ausgeführt"],
-  ["menge", "Menge und Einheit", "Menge größer 0 mit Einheit"],
-  ["personal", "Personal", "Mindestens eine Person mit Rolle, Anzahl und Stunden"],
-  ["geraete", "Geräte", "Mindestens ein Gerät mit Anzahl und Betriebsstunden"],
-];
-function PflichtTable({ pf, onChange, prof }) {
-  const lab = { sektion: prof.ort1, vorhaben: prof.ort2, bas: prof.schluessel };
+/* Gemeinsamer Tabellenkopf-Eingabefeld für frei benennbare Spalten */
+const HEAD_INPUT = "w-full min-h-[34px] rounded-sm border border-white/40 bg-white px-2 text-xs font-semibold normal-case tracking-normal text-[#0F1E46] placeholder-[#96A8C7] outline-none focus:border-[#FAD200]";
+
+/* Tab "Personal": Rollen + Personen */
+function PersonalTab({ lists, pf, onList, onPflicht }) {
+  const personen = lists.personen || [];
+  const sp = lists.personalSpalten || ["", ""];
+  const rollen = (lists.rollen || []).filter((r) => r.trim());
+  const [q, setQ] = useState("");
+  const wrap = React.useRef(null); const focusRow = React.useRef(-1);
+  useEffect(() => { if (focusRow.current < 0) return; const el = wrap.current && wrap.current.querySelector(`[data-prow="${focusRow.current}"]`); focusRow.current = -1; if (el) el.focus(); }, [personen.length]);
+  const ql = q.trim().toLowerCase();
+  const rows = personen.map((p, i) => ({ p, i })).filter(({ p }) => !ql || `${p.name} ${p.rolle} ${p.c1} ${p.c2}`.toLowerCase().includes(ql));
+  const setP = (i, patch) => onList("personen", personen.map((x, k) => (k === i ? { ...x, ...patch } : x)));
+  const setSp = (j, v) => onList("personalSpalten", sp.map((x, k) => (k === j ? v : x)));
   return (
-    <div>
-      <p className="mb-3 text-sm text-[#0F1E46]">Hier legst du fest, welche Angaben beim Erfassen einer Leistung Pflicht sind.</p>
-      <table className="w-full table-fixed border-collapse text-sm">
-        <thead><tr className="bg-[#0F1E46] text-white">
-          <th className={`${TH_CLS} w-[34%] sm:w-[22%]`}>Feld</th><th className={`${TH_CLS} hidden sm:table-cell`}>Bedeutung</th><th className={`${TH_CLS} w-[66%] sm:w-[280px]`}>Pflicht / Freiwillig</th>
-        </tr></thead>
-        <tbody>
-          {PFLICHT_ROWS.filter(([k]) => k !== "vorhaben" || prof.ort2Aktiv).map(([k, l0, was]) => { const label = lab[k] || l0; return (
-            <tr key={k} data-pflicht={k} className="border-b border-[#C8D2E6] align-middle">
-              <td className="px-2 py-2 font-semibold text-[#0F1E46]">{label}<span className="mt-0.5 block text-xs font-normal text-[#0F1E46]/70 sm:hidden">{was}</span></td>
-              <td className="hidden px-2 py-2 text-[#0F1E46]/70 sm:table-cell">{was}</td>
-              <td className="px-2 py-2"><PflichtToggle value={pf[k]} onChange={(v) => onChange({ ...pf, [k]: v })} /></td>
-            </tr>
-          ); })}
-        </tbody>
-      </table>
+    <div className="space-y-4">
+      <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4">
+        <h2 className="mb-3 text-sm font-bold text-[#0F1E46]">Rollen</h2>
+        <PflichtBar frage="Muss jede Leistung mindestens eine Person enthalten?" value={pf.personal} onChange={(v) => onPflicht("personal", v)} />
+        <ListTable items={lists.rollen} onChange={(v) => onList("rollen", v)} placeholder="Polier" />
+      </section>
+      <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4">
+        <h2 className="mb-3 text-sm font-bold text-[#0F1E46]">Personen</h2>
+        <div className="mb-4 border-l-4 border-[#FAD200] bg-[#DAE1F0] p-3 text-sm text-[#0F1E46]">Namen werden nur auf diesem Gerät und in der Excel-Datei gespeichert, nicht auf dem gemeinsamen Server. Beim Erfassen einer Leistung kannst du sie je Rolle antippen.</div>
+        <div ref={wrap}>
+          {personen.length > 15 && <div className="mb-3 flex"><TableSearch value={q} onChange={setQ} placeholder="Personen suchen…" /></div>}
+          <div className="relative overflow-x-auto">
+            <table className="w-full min-w-[640px] table-fixed border-collapse text-sm">
+              <thead><tr className="bg-[#0F1E46] text-white">
+                <th className={`${TH_CLS} w-[26%]`}>Name</th><th className={`${TH_CLS} w-[22%]`}>Rolle</th>
+                <th className="w-[22%] px-2 py-2"><input className={HEAD_INPUT} value={sp[0] || ""} onChange={(e) => setSp(0, e.target.value)} placeholder="Eigene Spalte" aria-label="Titel freie Spalte 1" /></th>
+                <th className="w-[22%] px-2 py-2"><input className={HEAD_INPUT} value={sp[1] || ""} onChange={(e) => setSp(1, e.target.value)} placeholder="Eigene Spalte" aria-label="Titel freie Spalte 2" /></th>
+                <th className="w-12 px-1 py-2"><span className="sr-only">Löschen</span></th>
+              </tr></thead>
+              <tbody>
+                {rows.map(({ p, i }) => (
+                  <tr key={i} className="border-b border-[#C8D2E6] align-top">
+                    <td className="px-2 py-1.5"><input data-prow={i} className={CELL_INPUT} value={p.name || ""} placeholder="Name" onChange={(e) => setP(i, { name: e.target.value })} /></td>
+                    <td className="px-2 py-1.5"><select className={CELL_INPUT} value={p.rolle || ""} onChange={(e) => setP(i, { rolle: e.target.value })}><option value="">– Rolle –</option>{p.rolle && !rollen.includes(p.rolle) && <option value={p.rolle}>{p.rolle}</option>}{rollen.map((r) => <option key={r} value={r}>{r}</option>)}</select></td>
+                    <td className="px-2 py-1.5"><input className={CELL_INPUT} value={p.c1 || ""} onChange={(e) => setP(i, { c1: e.target.value })} /></td>
+                    <td className="px-2 py-1.5"><input className={CELL_INPUT} value={p.c2 || ""} onChange={(e) => setP(i, { c2: e.target.value })} /></td>
+                    <td className="px-1 py-1.5 text-center"><button onClick={() => onList("personen", personen.filter((_, k) => k !== i))} className={DEL_BTN} aria-label="Zeile löschen"><Trash2 size={16} /></button></td>
+                  </tr>
+                ))}
+                {rows.length === 0 && <tr><td colSpan={5} className="px-2 py-3 text-sm text-[#677BA4]">{personen.length === 0 ? "Noch keine Personen." : "Keine Treffer."}</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <AddBtn onClick={() => { setQ(""); focusRow.current = personen.length; onList("personen", [...personen, { name: "", rolle: "", c1: "", c2: "" }]); }}>Person hinzufügen</AddBtn>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* Tab "Nachunternehmer": Name | Ansprechpartner (Liste bleibt Array aus Namen, Ansprechpartner je Name daneben) */
+function NuTable({ names, ansprech, onChange }) {
+  const [q, setQ] = useState("");
+  const wrap = React.useRef(null); const focusRow = React.useRef(-1);
+  useEffect(() => { if (focusRow.current < 0) return; const el = wrap.current && wrap.current.querySelector(`[data-row="${focusRow.current}"]`); focusRow.current = -1; if (el) el.focus(); }, [names.length]);
+  const ql = q.trim().toLowerCase();
+  const rows = names.map((v, i) => ({ v, i })).filter(({ v }) => !ql || `${v} ${ansprech[v] || ""}`.toLowerCase().includes(ql));
+  const rename = (i, nv) => { const old = names[i]; const an = { ...ansprech }; if (old !== nv && old in an) { an[nv] = an[old]; delete an[old]; } onChange(names.map((x, k) => (k === i ? nv : x)), an); };
+  const setAn = (name, v) => onChange(names, { ...ansprech, [name]: v });
+  const del = (i) => { const an = { ...ansprech }; if (names.filter((x) => x === names[i]).length === 1) delete an[names[i]]; onChange(names.filter((_, k) => k !== i), an); };
+  return (
+    <div ref={wrap}>
+      {names.length > 15 && <div className="mb-3 flex"><TableSearch value={q} onChange={setQ} placeholder="Suchen…" /></div>}
+      <div className="relative overflow-x-auto">
+        <table className="w-full min-w-[420px] table-fixed border-collapse text-sm">
+          <thead><tr className="bg-[#0F1E46] text-white"><th className={`${TH_CLS} w-[48%]`}>Name</th><th className={TH_CLS}>Ansprechpartner</th><th className="w-12 px-1 py-2"><span className="sr-only">Löschen</span></th></tr></thead>
+          <tbody>
+            {rows.map(({ v, i }) => (
+              <tr key={i} className="border-b border-[#C8D2E6]">
+                <td className="px-2 py-1.5"><input data-row={i} className={CELL_INPUT} value={v} placeholder="Name der Firma" onChange={(e) => rename(i, e.target.value)} /></td>
+                <td className="px-2 py-1.5"><input className={CELL_INPUT} value={ansprech[v] || ""} disabled={!v.trim()} placeholder={v.trim() ? "Name, Telefon" : "erst Firma eintragen"} onChange={(e) => setAn(v, e.target.value)} /></td>
+                <td className="px-1 py-1.5 text-center"><button onClick={() => del(i)} className={DEL_BTN} aria-label="Zeile löschen"><Trash2 size={16} /></button></td>
+              </tr>
+            ))}
+            {rows.length === 0 && <tr><td colSpan={3} className="px-2 py-3 text-sm text-[#677BA4]">{names.length === 0 ? "Noch keine Einträge." : "Keine Treffer."}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <AddBtn onClick={() => { setQ(""); focusRow.current = names.length; onChange([...names, ""], ansprech); }}>Zeile hinzufügen</AddBtn>
+    </div>
+  );
+}
+
+/* Geräte als flache Tabelle. Bearbeitet werden Zeilen (lokal); gespeichert wird weiter
+   lists.geraete = [{typ, units}] plus lists.geraeteInfo[typ||unit] = {inv, c1, c2}. */
+const geraeteRows = (geraete, info) => {
+  const out = [];
+  (geraete || []).forEach((g) => { const u = (g.units || []).filter(Boolean); const mk = (unit) => { const i = (info || {})[g.typ + "||" + unit] || {}; return { rid: uid(), typ: g.typ, unit, inv: i.inv || "", c1: i.c1 || "", c2: i.c2 || "" }; }; if (u.length === 0) out.push(mk("")); else u.forEach((x) => out.push(mk(x))); });
+  return out;
+};
+const geraeteFromRows = (rows) => {
+  const m = new Map(); const info = {};
+  rows.forEach((r) => { const t = (r.typ || "").trim(); if (!t) return; if (!m.has(t)) m.set(t, []); const u = (r.unit || "").trim(); if (u && !m.get(t).includes(u)) m.get(t).push(u);
+    const i = { inv: r.inv || "", c1: r.c1 || "", c2: r.c2 || "" }; const k = t + "||" + u; if ((i.inv || i.c1 || i.c2) && !info[k]) info[k] = i; });
+  return { geraete: [...m.entries()].map(([typ, units]) => ({ typ, units })), geraeteInfo: info };
+};
+function GeraeteFlat({ geraete, info, spalten, onChange }) {
+  const [rows, setRows] = useState(() => geraeteRows(geraete, info));
+  const last = React.useRef({ g: geraete, i: info });
+  const [q, setQ] = useState("");
+  const wrap = React.useRef(null); const focusRid = React.useRef("");
+  useEffect(() => { if (geraete !== last.current.g || info !== last.current.i) { last.current = { g: geraete, i: info }; setRows(geraeteRows(geraete, info)); } }, [geraete, info]);
+  useEffect(() => { if (!focusRid.current) return; const el = wrap.current && wrap.current.querySelector(`[data-rid="${focusRid.current}"]`); focusRid.current = ""; if (el) el.focus(); }, [rows.length]);
+  const sp = spalten || ["", ""];
+  const emit = (next) => { setRows(next); const d = geraeteFromRows(next); last.current = { g: d.geraete, i: d.geraeteInfo }; onChange({ geraete: d.geraete, geraeteInfo: d.geraeteInfo }); };
+  const setR = (rid, patch) => emit(rows.map((r) => (r.rid === rid ? { ...r, ...patch } : r)));
+  const ql = q.trim().toLowerCase();
+  const shown = rows.filter((r) => !ql || `${r.typ} ${r.unit} ${r.inv} ${r.c1} ${r.c2}`.toLowerCase().includes(ql));
+  const hi = "w-full min-h-[34px] rounded-sm border border-white/40 bg-white px-2 text-xs font-semibold normal-case tracking-normal text-[#0F1E46] placeholder-[#96A8C7] outline-none focus:border-[#FAD200]";
+  return (
+    <div ref={wrap}>
+      {rows.length > 15 && <div className="mb-3 flex"><TableSearch value={q} onChange={setQ} placeholder="Geräte suchen…" /></div>}
+      <div className="relative overflow-x-auto">
+        <table className="w-full min-w-[760px] table-fixed border-collapse text-sm">
+          <thead><tr className="bg-[#0F1E46] text-white">
+            <th className={`${TH_CLS} w-[22%]`}>Gerätetyp</th><th className={`${TH_CLS} w-[22%]`}>Genaue Bezeichnung</th><th className={`${TH_CLS} w-[16%]`}>Inventarnummer</th>
+            <th className="w-[17%] px-2 py-2"><input className={hi} value={sp[0] || ""} onChange={(e) => onChange({ geraeteSpalten: [e.target.value, sp[1] || ""] })} placeholder="Eigene Spalte" aria-label="Titel freie Spalte 1" /></th>
+            <th className="w-[17%] px-2 py-2"><input className={hi} value={sp[1] || ""} onChange={(e) => onChange({ geraeteSpalten: [sp[0] || "", e.target.value] })} placeholder="Eigene Spalte" aria-label="Titel freie Spalte 2" /></th>
+            <th className="w-12 px-1 py-2"><span className="sr-only">Löschen</span></th>
+          </tr></thead>
+          <tbody>
+            {shown.map((r) => (
+              <tr key={r.rid} className="border-b border-[#C8D2E6] align-top">
+                <td className="px-2 py-1.5"><input data-rid={r.rid} className={CELL_INPUT} value={r.typ} placeholder="z. B. Kettenbagger" onChange={(e) => setR(r.rid, { typ: e.target.value })} /></td>
+                <td className="px-2 py-1.5"><input className={CELL_INPUT} value={r.unit} placeholder="CAT 320" onChange={(e) => setR(r.rid, { unit: e.target.value })} /></td>
+                <td className="px-2 py-1.5"><input className={CELL_INPUT} value={r.inv} placeholder="Inv.-Nr." onChange={(e) => setR(r.rid, { inv: e.target.value })} /></td>
+                <td className="px-2 py-1.5"><input className={CELL_INPUT} value={r.c1} onChange={(e) => setR(r.rid, { c1: e.target.value })} /></td>
+                <td className="px-2 py-1.5"><input className={CELL_INPUT} value={r.c2} onChange={(e) => setR(r.rid, { c2: e.target.value })} /></td>
+                <td className="px-1 py-1.5 text-center"><button onClick={() => emit(rows.filter((x) => x.rid !== r.rid))} className={DEL_BTN} aria-label="Zeile löschen"><Trash2 size={16} /></button></td>
+              </tr>
+            ))}
+            {shown.length === 0 && <tr><td colSpan={6} className="px-2 py-3 text-sm text-[#677BA4]">{rows.length === 0 ? "Noch keine Geräte." : "Keine Treffer."}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <AddBtn onClick={() => { setQ(""); const rid = uid(); focusRid.current = rid; setRows([...rows, { rid, typ: "", unit: "", inv: "", c1: "", c2: "" }]); }}>Zeile hinzufügen</AddBtn>
+      <p className="mt-2 text-xs text-[#0F1E46]/70">Gleicher Gerätetyp in mehreren Zeilen = mehrere genaue Geräte dieses Typs. Zeilen ohne Gerätetyp werden nicht gespeichert.</p>
     </div>
   );
 }
@@ -1000,8 +1187,10 @@ export default function App() {
   const [fotoData, setFotoData] = useState({}); // id -> Bild (Data-URL), getrennt vom Bericht gespeichert
   const [localEdit, setLocalEdit] = useState(false); // Listen ohne Anmeldung, nur auf diesem Gerät
   const [listsTab, setListsTab] = useState("projekt");
+  const [lvlOpen, setLvlOpen] = useState(""); // geöffneter Listeneditor im Reiter Projekt
   const [listsMsg, setListsMsg] = useState("");
   const [sendMsg, setSendMsg] = useState(""); // Hinweis nach „Senden“
+  const [projBusy, setProjBusy] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false); // Dialog: Leistungen aus früherem Tag übernehmen
 
   useEffect(() => {
@@ -1020,7 +1209,7 @@ export default function App() {
         }
       } catch (e) {}
       if (SB_ON && !localOnly) {
-        try { const d = await sbLoadLists(); if (d) setLists({ ...defaultLists(), ...d }); } // gemeinsame Listen
+        try { const d = await sbLoadLists(); if (d) setLists((cur) => ({ ...defaultLists(), ...d, personen: cur.personen || [], nuAnsprech: cur.nuAnsprech || {} })); } // gemeinsame Listen
         catch (e) { /* offline/blockiert -> lokaler Cache bleibt */ }
       }
     })();
@@ -1034,8 +1223,9 @@ export default function App() {
   const persistSession = async (s) => {
     try { if (typeof window !== "undefined" && window.storage) { if (s) await window.storage.set("btb_session", JSON.stringify(s)); else await window.storage.delete("btb_session"); } } catch (e) {}
   };
-  const setListKey = (key, value) => setLists((l) => {
-    const n = { ...l, [key]: value };
+  const setListKey = (key, value) => setListKeys({ [key]: value });
+  const setListKeys = (patch) => setLists((l) => {
+    const n = { ...l, ...patch };
     persistLists(n); // lokaler Cache
     if (SB_ON && session) {
       setListsErr("");
@@ -1054,7 +1244,7 @@ export default function App() {
   const enableLocalEdit = async () => { setLocalEdit(true); try { if (window.storage) await window.storage.set("btb_lists_local", "1"); } catch (e) {} };
   const disableLocalEdit = async () => {
     setLocalEdit(false); try { if (window.storage) await window.storage.delete("btb_lists_local"); } catch (e) {}
-    if (SB_ON) { try { const d = await sbLoadLists(); const n = { ...defaultLists(), ...(d || {}) }; setLists(n); persistLists(n); } catch (e) { setListsErr("Gemeinsame Listen konnten nicht geladen werden."); } }
+    if (SB_ON) { try { const d = await sbLoadLists(); const n = { ...defaultLists(), ...(d || {}), personen: lists.personen || [], nuAnsprech: lists.nuAnsprech || {} }; setLists(n); persistLists(n); } catch (e) { setListsErr("Gemeinsame Listen konnten nicht geladen werden."); } }
   };
   const exportLists = () => {
     const wb = listsToWorkbook(lists);
@@ -1086,10 +1276,10 @@ export default function App() {
       setFotoData((d) => ({ ...d, ...add }));
     })();
   }, [day.fotos, previewData]);
-  const addFotos = async (files, stillId) => {
+  const addFotos = async (files, stillId, posId) => {
     const neu = []; const data = {};
     for (const file of Array.from(files || [])) {
-      try { const url = await fileToJpeg(file); const id = uid(); data[id] = url; neu.push({ id, name: file.name, text: "", ...(stillId ? { stillId } : {}) }); try { if (window.storage) await window.storage.set("btb_foto_" + id, url); } catch (e) {} } catch (e) {}
+      try { const url = await fileToJpeg(file); const id = uid(); data[id] = url; neu.push({ id, name: file.name, text: "", ...(stillId ? { stillId } : {}), ...(posId ? { posId } : {}) }); try { if (window.storage) await window.storage.set("btb_foto_" + id, url); } catch (e) {} } catch (e) {}
     }
     if (neu.length === 0) return;
     setFotoData((d) => ({ ...d, ...data }));
@@ -1098,6 +1288,11 @@ export default function App() {
   const delFoto = async (id) => { delDayRow("fotos", id); try { if (window.storage) await window.storage.delete("btb_foto_" + id); } catch (e) {} };
   const stillValid = (d) => (d.stillstand || []).filter((x) => x.start || x.ende || x.grund || x.sektion);
   const fotosOf = (d) => (d.fotos || []).map((f) => ({ ...f, data: fotoData[f.id], still: f.stillId ? stillValid(d).findIndex((x) => x.id === f.stillId) + 1 : 0 })).filter((f) => f.data);
+  const dropPosFotos = (id) => {
+    (day.fotos || []).filter((f) => f.posId === id).forEach((f) => { try { if (window.storage) window.storage.delete("btb_foto_" + f.id); } catch (e) {} });
+    const n = { ...day, fotos: (day.fotos || []).filter((f) => f.posId !== id) }; setDay(n); persist({ day: n }); return n;
+  };
+  const cancelWizard = () => { if (!positions.some((p) => p.id === draft.id)) dropPosFotos(draft.id); setView("home"); };
   const delStill = (id) => {
     (day.fotos || []).filter((f) => f.stillId === id).forEach((f) => { try { if (window.storage) window.storage.delete("btb_foto_" + f.id); } catch (e) {} });
     const n = { ...day, stillstand: (day.stillstand || []).filter((x) => x.id !== id), fotos: (day.fotos || []).filter((f) => f.stillId !== id) }; setDay(n); persist({ day: n });
@@ -1113,6 +1308,8 @@ export default function App() {
   // Abgeleitete Optionen / Lookups aus den (editierbaren) Listen
   const sektOpts = useMemo(() => lists.sektionen.filter(Boolean).map((s) => ({ value: s, label: s })), [lists.sektionen]);
   const taetOpts = useMemo(() => lists.taetigkeiten.filter(Boolean).map((s) => ({ value: s, label: s })), [lists.taetigkeiten]);
+  const ebene5Opts = useMemo(() => (lists.ebene5 || []).filter(Boolean).map((s) => ({ value: s, label: s })), [lists.ebene5]);
+  const ebene6Opts = useMemo(() => (lists.ebene6 || []).filter(Boolean).map((s) => ({ value: s, label: s })), [lists.ebene6]);
   const rollenOpts = useMemo(() => lists.rollen.filter(Boolean).map((s) => ({ value: s, label: s })), [lists.rollen]);
   const basOpts = useMemo(() => lists.bas.filter((b) => b.code).map((b) => ({ value: b.code, code: b.code, labelShort: b.name, label: `${b.code} – ${b.name}`, group: b.group, sub: (b.desc || "").slice(0, 95) })), [lists.bas]);
   const geraeteTypOpts = useMemo(() => lists.geraete.filter((g) => g.typ).map((g) => ({ value: g.typ, label: g.typ })), [lists.geraete]);
@@ -1149,11 +1346,15 @@ export default function App() {
   const gerComplete = draft.geraete.filter((g) => g.typ && num(g.anzahl) > 0 && num(g.stunden) > 0 && (unitsOf(g.typ).length === 0 || g.geraet));
   const descOk = !!(draft.beschreibung && draft.beschreibung.trim());
   const mengeOk = num(draft.menge) > 0;
+  const rq = Object.fromEntries(LEVELS.map((lv) => [lv.key, !!prof[lv.akt] && !!pf[lv.key]])); // Pflicht gilt nur bei aktiver Ebene
+  const lvLab = (k) => { const lv = LEVELS.find((x) => x.key === k); return prof[lv.lab] || lv.def; };
   const missA = [
-    pf.sektion && !draft.sektion && prof.ort1,
-    pf.vorhaben && prof.ort2Aktiv && !(draft.vorhaben || draft.vorhabenUeb === "Ja") && prof.ort2,
-    pf.taetigkeit && !draft.taetigkeit && "Tätigkeit",
-    pf.bas && !draft.bas && prof.schluessel,
+    rq.sektion && !draft.sektion && lvLab("sektion"),
+    rq.vorhaben && !(draft.vorhaben || draft.vorhabenUeb === "Ja") && lvLab("vorhaben"),
+    rq.taetigkeit && !draft.taetigkeit && lvLab("taetigkeit"),
+    rq.bas && !draft.bas && lvLab("bas"),
+    rq.ebene5 && !draft.ebene5 && lvLab("ebene5"),
+    rq.ebene6 && !draft.ebene6 && lvLab("ebene6"),
   ].filter(Boolean);
   const missB = [
     pf.beschreibung && !descOk && "Beschreibung",
@@ -1161,7 +1362,7 @@ export default function App() {
     (pf.menge || mengeOk) && !draft.einheit && "Einheit",
   ].filter(Boolean);
   const stepValid = [
-    !!((!pf.sektion || draft.sektion) && (!pf.taetigkeit || draft.taetigkeit) && (!pf.bas || draft.bas) && (!pf.vorhaben || !prof.ort2Aktiv || draft.vorhaben || draft.vorhabenUeb === "Ja")),
+    missA.length === 0,
     !!((!pf.beschreibung || descOk) && (!pf.menge || (mengeOk && draft.einheit)) && (!mengeOk || draft.einheit)),
     !!((!pf.personal || persComplete.length >= 1) && !persIncomplete),
     !!((!pf.geraete || gerComplete.length >= 1) && !gerIncomplete),
@@ -1174,7 +1375,7 @@ export default function App() {
     const list = exists ? positions.map((p) => p.id === draft.id ? done : p) : [done, ...positions];
     setPositions(list); persist({ positions: list }); setView("home");
   };
-  const deletePosition = (id) => { const list = positions.filter((p) => p.id !== id); setPositions(list); persist({ positions: list }); };
+  const deletePosition = (id) => { const nd = dropPosFotos(id); const list = positions.filter((p) => p.id !== id); setPositions(list); persist({ positions: list, day: nd }); };
   // Tagesweite Listen (Stillstand, Vorkommnisse) – direkt im day-Objekt, sofort gespeichert
   const addDayRow = (key, blank) => { const n = { ...day, [key]: [...(day[key] || []), { id: uid(), ...blank }] }; setDay(n); persist({ day: n }); };
   const updDayRow = (key, id, patch) => { const n = { ...day, [key]: (day[key] || []).map((x) => x.id === id ? { ...x, ...patch } : x) }; setDay(n); persist({ day: n }); };
@@ -1184,6 +1385,29 @@ export default function App() {
     if (!hasContent || positions.some((p) => p.pruefen)) return;
     const arch = [{ id: uid(), day: { ...day }, positions, savedAt: new Date().toISOString() }, ...archive];
     const nd = emptyDay(prof.projekt); setArchive(arch); setPositions([]); setDay(nd); persist({ archive: arch, positions: [], day: nd });
+  };
+  const loadFotoData = async (d) => {
+    const out = [];
+    for (const f of d.fotos || []) {
+      let data = fotoData[f.id];
+      if (!data) { try { const r = window.storage && await window.storage.get("btb_foto_" + f.id); data = (r && r.value) || ""; } catch (e) { data = ""; } }
+      if (data) out.push({ ...f, data, still: f.stillId ? stillValid(d).findIndex((x) => x.id === f.stillId) + 1 : 0 });
+    }
+    return out;
+  };
+  const exportProjectPdf = async () => {
+    if (archive.length === 0 || projBusy) return;
+    setProjBusy(true);
+    try {
+      const recs = archive.map((a) => ({ day: a.day, positions: a.positions })).sort((a, b) => String(a.day.datum).localeCompare(String(b.day.datum)));
+      if (positions.length > 0) recs.push({ day, positions });
+      const entries = [];
+      for (const r of recs) entries.push({ ...r, fotos: await loadFotoData(r.day) });
+      const blob = await buildProjectPdfBlob(entries, basName, day.projekt || entries[0].day.projekt);
+      const pj = (day.projekt || entries[0].day.projekt || "Projekt").replace(/[^\wÄÖÜäöüß-]+/g, "_");
+      downloadBlob(blob, `Bautagesberichte_${pj}_${entries[0].day.datum}_${entries[entries.length - 1].day.datum}.pdf`);
+    } catch (e) { console.error(e); }
+    setProjBusy(false);
   };
   const loadArchived = (rec) => { setDay({ ...rec.day }); setPositions(rec.positions); setView("home"); };
   const deleteArchived = (id) => {
@@ -1208,13 +1432,13 @@ export default function App() {
   /* ============ EINSTELLUNGEN / LISTEN ============ */
   if (view === "settings") {
     const needLogin = SB_ON && !session && !localEdit;
-    const TABS = [["projekt", "Projekt"], ["pflicht", "Pflichtfelder"], ["sektionen", prof.ort1 === "Sektion" ? "Sektionen" : (prof.ort1 || "Ort")], ["taetigkeiten", "Tätigkeiten"], ["rollen", "Rollen"], ["nachunternehmer", "Nachunternehmer"], ["geraete", "Geräte"], ["bas", prof.schluessel || "BAS"]];
+    const TABS = [["projekt", "Projekt"], ["personal", "Personal"], ["nachunternehmer", "Nachunternehmer"], ["geraete", "Geräte"]];
     return (
       <Shell>
         <TopBar title="Einstellungen" subtitle={session ? `Admin: ${session.email}` : localEdit ? "Listen nur auf diesem Gerät" : SB_ON ? "Anmeldung für gemeinsame Listen" : "Lokaler Modus"}
           left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-sm bg-white/10 text-white hover:bg-white/20" aria-label="Zurück"><ChevronLeft size={18} /></button>}
           right={session ? <button onClick={doLogout} className="inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/10"><LogOut size={15} /> <span className="hidden sm:inline">Abmelden</span></button> : null} />
-        <main className={`mx-auto ${!needLogin && listsTab === "bas" ? "max-w-6xl" : "max-w-4xl"} space-y-4 px-3 py-4 sm:px-4 sm:py-6`}>
+        <main className={`mx-auto ${!needLogin && ((listsTab === "projekt" && lvlOpen === "bas") || listsTab === "geraete" || listsTab === "personal") ? "max-w-6xl" : "max-w-4xl"} space-y-4 px-3 py-4 sm:px-4 sm:py-6`}>
           {needLogin ? (
             <div className="min-w-0 space-y-4">
               <LoginCard onSubmit={async (email, pw) => { const s = await sbLogin(email, pw); setSession(s); persistSession(s); }} />
@@ -1247,18 +1471,14 @@ export default function App() {
 
               <div className="flex flex-wrap gap-2">
                 {TABS.map(([k, l]) => (
-                  <button key={k} onClick={() => setListsTab(k)} className={`min-h-[40px] rounded-sm border px-3 text-sm font-semibold transition ${listsTab === k ? "border-[#0F1E46] bg-[#DAE1F0] text-[#0F1E46]" : "border-[#C8D2E6] bg-white text-[#0F1E46]/70 hover:bg-[#DAE1F0]"}`}>{l}{k !== "pflicht" && k !== "projekt" && <> <span className="text-[#677BA4]">{k === "bas" ? lists.bas.length : k === "geraete" ? lists.geraete.length : (lists[k] || []).filter((x) => x.trim()).length}</span></>}</button>
+                  <button key={k} onClick={() => setListsTab(k)} className={`min-h-[40px] rounded-sm border px-3 text-sm font-semibold transition ${listsTab === k ? "border-[#0F1E46] bg-[#DAE1F0] text-[#0F1E46]" : "border-[#C8D2E6] bg-white text-[#0F1E46]/70 hover:bg-[#DAE1F0]"}`}>{l}{k !== "projekt" && <> <span className="text-[#677BA4]">{k === "personal" ? (lists.personen || []).length : k === "geraete" ? lists.geraete.length : (lists[k] || []).filter((x) => x.trim()).length}</span></>}</button>
                 ))}
               </div>
 
-              {listsTab === "projekt" && <ProjektTab prof={prof} onProfil={setProfil} onTyp={applyTyp} />}
-              {listsTab === "pflicht" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><PflichtTable pf={pf} prof={prof} onChange={(v) => setListKey("pflicht", v)} /></section>}
-              {listsTab === "sektionen" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><PflichtBar frage={`Muss beim Erfassen einer Leistung „${prof.ort1}“ gewählt werden?`} value={pf.sektion} onChange={(v) => setListKey("pflicht", { ...pf, sektion: v })} /><ListTable items={lists.sektionen} onChange={(v) => setListKey("sektionen", v)} placeholder="Sektion 1" /></section>}
-              {listsTab === "taetigkeiten" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><PflichtBar frage="Muss beim Erfassen einer Leistung eine Tätigkeit gewählt werden?" value={pf.taetigkeit} onChange={(v) => setListKey("pflicht", { ...pf, taetigkeit: v })} /><ListTable items={lists.taetigkeiten} onChange={(v) => setListKey("taetigkeiten", v)} placeholder="Unterboden ausheben" /></section>}
-              {listsTab === "rollen" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><PflichtBar frage="Muss jede Leistung mindestens eine Person enthalten?" value={pf.personal} onChange={(v) => setListKey("pflicht", { ...pf, personal: v })} /><ListTable items={lists.rollen} onChange={(v) => setListKey("rollen", v)} placeholder="Polier" /></section>}
-              {listsTab === "nachunternehmer" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><div className="mb-4 border-l-4 border-[#FAD200] bg-[#DAE1F0] p-3 text-sm text-[#0F1E46]">Ohne Auswahl gilt die Leistung als Eigenleistung.</div><ListTable items={lists.nachunternehmer || []} onChange={(v) => setListKey("nachunternehmer", v)} placeholder="Name der Firma" /></section>}
-              {listsTab === "geraete" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><PflichtBar frage="Muss jede Leistung mindestens ein Gerät enthalten?" value={pf.geraete} onChange={(v) => setListKey("pflicht", { ...pf, geraete: v })} /><GeraeteTable geraete={lists.geraete} onChange={(v) => setListKey("geraete", v)} /></section>}
-              {listsTab === "bas" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><PflichtBar frage={`Muss beim Erfassen einer Leistung „${prof.schluessel}“ gewählt werden?`} value={pf.bas} onChange={(v) => setListKey("pflicht", { ...pf, bas: v })} /><BasTable bas={lists.bas} onChange={(v) => setListKey("bas", v)} /></section>}
+              {listsTab === "projekt" && <ProjektTab prof={prof} pf={pf} lists={lists} open={lvlOpen} setOpen={setLvlOpen} onProfil={setProfil} onPflicht={(k, v) => setListKey("pflicht", { ...pf, [k]: v })} onList={setListKey} onTyp={applyTyp} />}
+              {listsTab === "personal" && <PersonalTab lists={lists} pf={pf} onList={setListKey} onPflicht={(k, v) => setListKey("pflicht", { ...pf, [k]: v })} />}
+              {listsTab === "nachunternehmer" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><div className="mb-4 border-l-4 border-[#FAD200] bg-[#DAE1F0] p-3 text-sm text-[#0F1E46]">Ohne Auswahl gilt die Leistung als Eigenleistung. Ansprechpartner werden nur auf diesem Gerät und in der Excel-Datei gespeichert, nicht auf dem gemeinsamen Server.</div><NuTable names={lists.nachunternehmer || []} ansprech={lists.nuAnsprech || {}} onChange={(n, a) => setListKeys({ nachunternehmer: n, nuAnsprech: a })} /></section>}
+              {listsTab === "geraete" && <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white p-4"><PflichtBar frage="Muss jede Leistung mindestens ein Gerät enthalten?" value={pf.geraete} onChange={(v) => setListKey("pflicht", { ...pf, geraete: v })} /><GeraeteFlat geraete={lists.geraete} info={lists.geraeteInfo || EMPTY_OBJ} spalten={lists.geraeteSpalten} onChange={setListKeys} /></section>}
             </>
           )}
         </main>
@@ -1272,14 +1492,14 @@ export default function App() {
     return (
       <Shell>
         <TopBar title={editingId ? "Leistung bearbeiten" : "Neue Leistung"} subtitle={dateDE(day.datum)}
-          left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-sm bg-white/10 text-white hover:bg-white/20" aria-label="Abbrechen"><X size={18} /></button>} />
+          left={<button onClick={cancelWizard} className="flex h-9 w-9 items-center justify-center rounded-sm bg-white/10 text-white hover:bg-white/20" aria-label="Abbrechen"><X size={18} /></button>} />
         <main className="mx-auto max-w-6xl px-3 py-4 sm:px-4">
           <div className="grid items-start gap-4 lg:grid-cols-2">
             <div className="space-y-3">
               <H>Leistung</H>
             <div className="space-y-4 rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
-              <Field label={(prof.ort1 || "Ort") + (pf.sektion ? " *" : "")}><Combo value={draft.sektion} onChange={(v) => setD("sektion", v)} options={sektOpts} /></Field>
-              {(() => { const si = sektInfo(draft.sektion); return si ? (
+              {prof.ort1Aktiv && <Field label={lvLab("sektion") + (rq.sektion ? " *" : "")}><Combo value={draft.sektion} onChange={(v) => setD("sektion", v)} options={sektOpts} /></Field>}
+              {(() => { const si = prof.ort1Aktiv && sektInfo(draft.sektion); return si ? (
                 <div className="border-l-4 border-[#FAD200] bg-[#DAE1F0] p-3 text-sm">
                   <div className="flex flex-wrap gap-x-5 gap-y-1">
                     <span className="text-[#0F1E46]/70">km <b className="text-[#0F1E46]">{si.kmVon} – {si.kmBis}</b></span>
@@ -1296,27 +1516,32 @@ export default function App() {
               ) : null; })()}
               {prof.ort2Aktiv && (
                 <div>
-                  <Label>{prof.ort2 + (pf.vorhaben ? " *" : "")}</Label>
+                  <Label>{lvLab("vorhaben") + (rq.vorhaben ? " *" : "")}</Label>
+                  {ort2Opts.length > 6 ? (
+                    <Combo value={draft.vorhabenUeb === "Ja" ? prof.ort2UebLabel : draft.vorhaben} options={ort2Opts.map((o) => ({ value: o, label: o }))}
+                      onChange={(v) => setDraft((d) => (prof.ort2Ueb && v === prof.ort2UebLabel ? { ...d, vorhaben: "", vorhabenUeb: "Ja" } : { ...d, vorhaben: v, vorhabenUeb: "Nein" }))} />
+                  ) : (
                   <div className="flex flex-wrap gap-2">
                     {(prof.ort2Optionen || []).filter((x) => x && x.trim()).map((o) => (
-                      <button key={o} onClick={() => setDraft((d) => ({ ...d, vorhaben: o, vorhabenUeb: "Nein" }))} className={`min-h-[46px] min-w-[96px] flex-1 rounded-sm border px-3 text-sm font-semibold transition ${draft.vorhabenUeb !== "Ja" && draft.vorhaben === o ? "border-[#0F1E46] bg-[#DAE1F0] text-[#0F1E46]" : "border-[#C8D2E6] bg-white text-[#0F1E46]/70 hover:bg-[#DAE1F0]"}`}>{o}</button>
+                      <button key={o} onClick={() => setDraft((d) => ({ ...d, vorhaben: o, vorhabenUeb: "Nein" }))} className={`min-h-[46px] min-w-[96px] flex-1 break-words rounded-sm border px-3 text-sm font-semibold transition ${draft.vorhabenUeb !== "Ja" && draft.vorhaben === o ? "border-[#0F1E46] bg-[#DAE1F0] text-[#0F1E46]" : "border-[#C8D2E6] bg-white text-[#0F1E46]/70 hover:bg-[#DAE1F0]"}`}>{o}</button>
                     ))}
-                    {prof.ort2Ueb && <button onClick={() => setDraft((d) => ({ ...d, vorhaben: "", vorhabenUeb: "Ja" }))} className={`min-h-[46px] min-w-[96px] flex-1 rounded-sm border px-3 text-sm font-semibold transition ${draft.vorhabenUeb === "Ja" ? "border-[#0F1E46] bg-[#DAE1F0] text-[#0F1E46]" : "border-[#C8D2E6] bg-white text-[#0F1E46]/70 hover:bg-[#DAE1F0]"}`}>{prof.ort2UebLabel}</button>}
+                    {prof.ort2Ueb && <button onClick={() => setDraft((d) => ({ ...d, vorhaben: "", vorhabenUeb: "Ja" }))} className={`min-h-[46px] min-w-[96px] flex-1 break-words rounded-sm border px-3 text-sm font-semibold transition ${draft.vorhabenUeb === "Ja" ? "border-[#0F1E46] bg-[#DAE1F0] text-[#0F1E46]" : "border-[#C8D2E6] bg-white text-[#0F1E46]/70 hover:bg-[#DAE1F0]"}`}>{prof.ort2UebLabel}</button>}
                   </div>
+                  )}
                   {draft.vorhaben && draft.vorhabenUeb !== "Ja" && !(prof.ort2Optionen || []).includes(draft.vorhaben) && <p className="mt-1 text-xs text-[#0F1E46]/70">Bisher gewählt: {draft.vorhaben}</p>}
                 </div>
               )}
               {prof.stationAktiv && <Field label={prof.station} hint="(freiwillig)"><input className={inputCls} value={draft.station || ""} onChange={(e) => setD("station", e.target.value)} placeholder="z. B. 12+350 – 12+480" /></Field>}
-              <Field label={"Tätigkeit" + (pf.taetigkeit ? " *" : "")}><Combo value={draft.taetigkeit} onChange={(v) => setD("taetigkeit", v)} options={taetOpts} /></Field>
+              {prof.taetAktiv && <Field label={lvLab("taetigkeit") + (rq.taetigkeit ? " *" : "")}><Combo value={draft.taetigkeit} onChange={(v) => setD("taetigkeit", v)} options={taetOpts} /></Field>}
               <Field label="Ausführung durch"><NuSelect value={draft.nachunternehmer || ""} names={nuNames} onChange={(v) => { setD("nachunternehmer", v); rememberNu(v); }} /></Field>
-              <div>
+              {prof.basAktiv && <div>
                 <div className="mb-1 flex items-center justify-between">
-                  <Label hint="(Leistungs-/Kostenschlüssel)">{(prof.schluessel || "BAS") + (pf.bas ? " *" : "")}</Label>
+                  <Label hint="(Leistungs-/Kostenschlüssel)">{lvLab("bas") + (rq.bas ? " *" : "")}</Label>
                   {draft.bas && <button onClick={() => setBasModal(draft.bas)} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0F1E46] underline"><Info size={13} /> Was ist enthalten?</button>}
                 </div>
                 <Combo value={draft.bas} onChange={(v) => setD("bas", v)} options={basOpts} />
-              </div>
-              {draft.bas && (() => { const m = basMeta(draft.bas); return (m.lv || m.desc || m.wann) ? (
+              </div>}
+              {prof.basAktiv && draft.bas && (() => { const m = basMeta(draft.bas); return (m.lv || m.desc || m.wann) ? (
                 <div className="border-l-4 border-[#FAD200] bg-[#DAE1F0] p-3">
                   <div className="flex items-start gap-2">
                     <Info size={15} className="mt-0.5 shrink-0 text-[#0F1E46]" />
@@ -1329,6 +1554,8 @@ export default function App() {
                   </div>
                 </div>
               ) : null; })()}
+              {prof.e5Aktiv && <Field label={lvLab("ebene5") + (rq.ebene5 ? " *" : "")}><Combo value={draft.ebene5 || ""} onChange={(v) => setD("ebene5", v)} options={ebene5Opts} /></Field>}
+              {prof.e6Aktiv && <Field label={lvLab("ebene6") + (rq.ebene6 ? " *" : "")}><Combo value={draft.ebene6 || ""} onChange={(v) => setD("ebene6", v)} options={ebene6Opts} /></Field>}
               {missA.length > 0 && <p className="text-xs text-[#C62828]">Bitte auswählen: {missA.join(", ")}.</p>}
             </div>
               <H>Ausführung</H>
@@ -1358,7 +1585,12 @@ export default function App() {
                       <Field label="Anzahl Personen"><input type="number" inputMode="numeric" className={inputCls} value={p.anzahl} onChange={(e) => updRow("personal", p.id, { anzahl: e.target.value })} placeholder="1" /></Field>
                       <Field label="Stunden / Person"><input type="number" inputMode="decimal" className={inputCls} value={p.stunden} onChange={(e) => updRow("personal", p.id, { stunden: e.target.value })} placeholder="0" /></Field>
                     </div>
-                    <div className="mt-3"><Field label="Namen" hint="(optional)"><input className={inputCls} value={p.name || ""} onChange={(e) => updRow("personal", p.id, { name: e.target.value })} placeholder="z. B. Müller, Popescu" /></Field></div>
+                    <div className="mt-3"><Field label="Namen" hint="(optional)"><input className={inputCls} value={p.name || ""} onChange={(e) => updRow("personal", p.id, { name: e.target.value })} placeholder="z. B. Müller, Popescu" /></Field>
+                      {(() => { const all = (lists.personen || []).filter((x) => x.name && x.name.trim()); const match = all.filter((x) => x.rolle && x.rolle === p.rolle); const chips = match.length ? match : all; if (!chips.length) return null;
+                        const have = (p.name || "").split(",").map((x) => x.trim()).filter(Boolean);
+                        return (<div data-chips className="mt-2 flex max-h-28 flex-wrap gap-1.5 overflow-auto">{chips.map((x, k) => { const nm = x.name.trim(); const on = have.includes(nm); return (
+                          <button key={k} type="button" disabled={on} onClick={() => updRow("personal", p.id, { name: [...have, nm].join(", ") })} className={`min-h-[34px] rounded-sm border px-2.5 text-xs font-semibold transition ${on ? "border-[#C8D2E6] bg-[#DAE1F0] text-[#677BA4]" : "border-[#0F1E46] bg-white text-[#0F1E46] hover:bg-[#DAE1F0]"}`}>{on ? "✓ " : "+ "}{nm}</button>); })}</div>); })()}
+                    </div>
                     {num(p.anzahl) > 0 && num(p.stunden) > 0 && <p className="mt-2 text-right text-xs text-[#0F1E46]/70">= <span className="tabular-nums font-semibold text-[#0F1E46]">{fmt(num(p.anzahl) * num(p.stunden))}</span> Pers.-Std.</p>}
                   </RowShell>
                 ))}
@@ -1394,12 +1626,29 @@ export default function App() {
               <AddBtn onClick={() => addRow("geraete", { typ: "", geraet: "", anzahl: "1", stunden: "" })}>Gerät hinzufügen</AddBtn>
               {(gerIncomplete || (pf.geraete && gerComplete.length < 1)) && <p className="mt-2 text-xs text-[#C62828]">{gerIncomplete ? "Angefangene Geräte-Zeile: genaues Gerät (falls hinterlegt), Anzahl (> 0) und Betriebsstunden (> 0) ausfüllen oder Zeile entfernen." : "Mindestens ein Gerät mit Anzahl (> 0) und Betriebsstunden (> 0) erfassen."}</p>}
             </div>
+              <H>Fotos zur Leistung (freiwillig)</H>
+            <div className="rounded-sm border border-[#C8D2E6] bg-white p-4 sm:p-5">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {(day.fotos || []).filter((f) => f.posId === draft.id).map((f) => (
+                  <div key={f.id} className="rounded-sm border border-[#C8D2E6] bg-white p-1.5" data-posfoto={f.id}>
+                    <div className="relative">
+                      {fotoData[f.id] ? <img src={fotoData[f.id]} alt={f.text || f.name} className="h-24 w-full rounded-sm object-cover" /> : <div className="flex h-24 items-center justify-center bg-[#DAE1F0] text-xs text-[#677BA4]">lädt …</div>}
+                      <button onClick={() => delFoto(f.id)} className="absolute right-1 top-1 rounded-sm bg-white p-1 text-[#C62828]" aria-label="Foto löschen"><Trash2 size={13} /></button>
+                    </div>
+                    <input className="mt-1.5 min-h-[34px] w-full rounded-sm border border-[#C8D2E6] px-2 text-xs text-[#0F1E46] outline-none focus:border-[#0F1E46]" value={f.text || ""} onChange={(e) => updDayRow("fotos", f.id, { text: e.target.value })} placeholder="Beschreibung" />
+                  </div>
+                ))}
+              </div>
+              <label className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-sm bg-[#FAD200] px-2.5 py-1.5 text-xs font-bold text-[#0F1E46] hover:bg-[#FCE466]"><Camera size={13} /> Foto zur Leistung
+                <input type="file" accept="image/*" multiple className="hidden" data-pos={draft.id} onChange={(e) => { addFotos(e.target.files, undefined, draft.id); e.target.value = ""; }} />
+              </label>
+            </div>
             </div>
           </div>
         </main>
         <div className="sticky bottom-0 border-t border-[#C8D2E6] bg-white print:hidden">
           <div className="mx-auto flex max-w-6xl items-center gap-2 px-3 py-3 sm:px-4">
-            <button onClick={() => setView("home")} className="rounded-sm border border-[#0F1E46] bg-white px-4 py-3 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]">Abbrechen</button>
+            <button onClick={cancelWizard} className="rounded-sm border border-[#0F1E46] bg-white px-4 py-3 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]">Abbrechen</button>
             <div className="flex-1" />
             {!allValid && <span className="hidden text-xs text-[#C62828] sm:inline">Bitte alle Pflichtfelder ausfüllen</span>}
             <button onClick={() => allValid && savePosition()} disabled={!allValid} className={`inline-flex items-center gap-2 rounded-sm px-5 py-3 text-sm font-bold transition ${allValid ? "bg-[#FAD200] text-[#0F1E46] hover:bg-[#FCE466]" : "cursor-not-allowed bg-[#B1BFD8] text-white"}`}><Save size={18} /> Position speichern</button>
@@ -1417,6 +1666,10 @@ export default function App() {
         <TopBar title="Frühere Berichte" subtitle={`${archive.length} abgeschlossen`}
           left={<button onClick={() => setView("home")} className="flex h-9 w-9 items-center justify-center rounded-sm bg-white/10 text-white hover:bg-white/20"><ChevronLeft size={18} /></button>} />
         <main className="mx-auto max-w-3xl space-y-2 px-3 py-4 sm:px-4 sm:py-6">
+          <div className="mb-2 flex flex-wrap items-center gap-3">
+            <button onClick={exportProjectPdf} disabled={archive.length === 0 || projBusy} className={`inline-flex items-center gap-2 rounded-sm px-4 py-2.5 text-sm font-bold ${archive.length === 0 || projBusy ? "cursor-not-allowed bg-[#B1BFD8] text-white" : "bg-[#FAD200] text-[#0F1E46] hover:bg-[#FCE466]"}`}><FileText size={16} /> {projBusy ? "PDF wird erstellt …" : "Projekt-PDF (alle Berichte)"}</button>
+            {archive.length === 0 && <span className="text-xs text-[#0F1E46]/70">Erst einen Tag mit „Tag abschließen“ ablegen.</span>}
+          </div>
           {archive.length === 0 ? (
             <div className="rounded-sm border border-[#C8D2E6] bg-white py-12 text-center text-[#0F1E46]/70"><Archive className="mx-auto mb-3 text-[#677BA4]" size={40} /><p>Noch keine abgeschlossenen Berichte.</p></div>
           ) : archive.map((rec) => (
@@ -1448,7 +1701,7 @@ export default function App() {
             <button onClick={() => exportExcel(d, ps, basName)} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-3 py-2 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><FileSpreadsheet size={16} /> Excel</button>
             <button onClick={() => exportXML(d, ps, basName)} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-3 py-2 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><FileCode2 size={16} /> XML</button>
             <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-sm border border-[#0F1E46] bg-white px-3 py-2 text-sm font-semibold text-[#0F1E46] hover:bg-[#DAE1F0]"><Printer size={16} /> PDF</button>
-            <button onClick={async () => { if (offenP > 0) return; setSendMsg(""); const r = await shareReport(d, ps, basName, fotosOf(d)); setSendMsg(r === "eml" ? `E-Mail-Entwurf „${fileBase(d)}.eml“ wurde heruntergeladen. Datei öffnen – Outlook zeigt eine neue E-Mail mit PDF und XML im Anhang. Empfänger eintragen und senden.` : r === "download" ? "PDF und XML wurden heruntergeladen. Bitte an eine E-Mail anhängen." : ""); }} disabled={offenP > 0} className={`inline-flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-bold ${offenP > 0 ? "cursor-not-allowed bg-[#B1BFD8] text-white" : "bg-[#FAD200] text-[#0F1E46] hover:bg-[#FCE466]"}`}><Share2 size={16} /> Senden</button>
+            <button onClick={async () => { if (offenP > 0) return; setSendMsg(""); const r = await shareReport(d, ps, basName, fotosOf(d)); setSendMsg(r === "eml" ? `E-Mail-Entwurf „${fileBase(d)}.eml“ wurde heruntergeladen. Datei öffnen – Outlook zeigt eine neue E-Mail mit PDF, Excel und XML im Anhang. Empfänger eintragen und senden.` : r === "download" ? "PDF, Excel und XML wurden heruntergeladen. Bitte an eine E-Mail anhängen." : ""); }} disabled={offenP > 0} className={`inline-flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-bold ${offenP > 0 ? "cursor-not-allowed bg-[#B1BFD8] text-white" : "bg-[#FAD200] text-[#0F1E46] hover:bg-[#FCE466]"}`}><Share2 size={16} /> Senden</button>
           </div>
           {offenP > 0 && <p className="mb-3 border-l-4 border-[#C62828] bg-white py-2 pl-3 text-sm font-bold text-[#C62828] print:hidden">{offenP} übernommene Leistung(en) sind noch nicht geprüft. Senden ist erst danach möglich.</p>}
           {sendMsg && <p className="mb-3 border-l-4 border-[#FAD200] bg-[#DAE1F0] p-3 text-sm text-[#0F1E46] print:hidden">{sendMsg}</p>}
@@ -1465,9 +1718,10 @@ export default function App() {
             {ps.map((p, i) => (
               <div key={p.id} className="mb-4 break-inside-avoid rounded-sm border border-[#C8D2E6] p-4">
                 <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <span className="rounded-sm bg-[#0F1E46] px-2 py-0.5 tabular-nums text-xs font-bold text-[#FAD200]">{p.bas || "—"}</span>
+                  <span className="tabular-nums text-sm font-bold text-[#0F1E46]">{i + 1}.</span>
                   <b className="text-[#0F1E46]">{p.bas ? basName(p.bas) : "Ohne BAS"}</b>
-                  <span className="text-sm text-[#0F1E46]/70">{[p.sektion || "—", ort2Text(p), p.station].filter(Boolean).join(" · ")} · {p.taetigkeit || "—"}{p.nachunternehmer ? ` · NU: ${p.nachunternehmer}` : ""}</span>
+                  {p.bas && <span className="rounded-sm bg-[#0F1E46] px-2 py-0.5 tabular-nums text-xs font-bold text-[#FAD200]">{p.bas}</span>}
+                  <span className="text-sm text-[#0F1E46]/70">{posZeile(p)}{p.nachunternehmer ? ` · NU: ${p.nachunternehmer}` : ""}</span>
                   {num(p.menge) > 0 && <span className="ml-auto tabular-nums text-sm font-semibold text-[#0F1E46]">{fmt(num(p.menge))} {p.einheit || ""}</span>}
                 </div>
                 {p.beschreibung && <p className="mb-3 text-sm text-[#0F1E46]/70">{p.beschreibung}</p>}
@@ -1475,6 +1729,16 @@ export default function App() {
                   <MiniTable head={["Rolle", "Anz.", "Std."]} rows={p.personal.filter((x) => x.rolle).map((x) => [x.rolle + (x.name ? ` – ${x.name}` : ""), x.anzahl, x.stunden])} foot={`${fmt(phOf(p))} Pers.-Std.`} />
                   <MiniTable head={["Gerät", "Anz.", "Std."]} rows={p.geraete.filter((x) => x.typ).map((x) => [geraetLabel(x), x.anzahl, x.stunden])} foot={`${fmt(ghOf(p))} Std.`} />
                 </div>
+                {(d.fotos || []).filter((f) => f.posId === p.id).length > 0 && (
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    {(d.fotos || []).filter((f) => f.posId === p.id).map((f) => (
+                      <figure key={f.id} className="break-inside-avoid">
+                        {fotoData[f.id] ? <img src={fotoData[f.id]} alt={f.text || f.name} className="w-full rounded-sm border border-[#C8D2E6]" /> : <div className="flex h-28 items-center justify-center bg-[#DAE1F0] text-xs text-[#677BA4]">Foto nicht auf diesem Gerät</div>}
+                        <figcaption className="mt-1 text-xs text-[#0F1E46]"><span className="font-bold">Leistung {i + 1}:</span> {f.text || f.name}</figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
             {ps.length === 0 && <p className="text-[#677BA4]">Keine Positionen erfasst.</p>}
@@ -1522,11 +1786,11 @@ export default function App() {
               </div>
             )}
 
-            {(d.fotos || []).filter((f) => !f.stillId).length > 0 && (
+            {(d.fotos || []).filter((f) => !f.stillId && !f.posId).length > 0 && (
               <div className="mt-6">
                 <h2 className="mb-2 border-b border-[#C8D2E6] pb-1 text-sm font-bold uppercase tracking-wider text-[#0F1E46]">Fotos</h2>
                 <div className="grid grid-cols-2 gap-3">
-                  {(d.fotos || []).filter((f) => !f.stillId).map((f, i) => (
+                  {(d.fotos || []).filter((f) => !f.stillId && !f.posId).map((f, i) => (
                     <figure key={f.id} className="break-inside-avoid">
                       {fotoData[f.id] ? <img src={fotoData[f.id]} alt={f.text || f.name} className="w-full rounded-sm border border-[#C8D2E6]" /> : <div className="flex h-28 items-center justify-center bg-[#DAE1F0] text-xs text-[#677BA4]">Foto nicht auf diesem Gerät</div>}
                       <figcaption className="mt-1 text-xs text-[#0F1E46]">{i + 1}. {f.text || f.name}</figcaption>
@@ -1633,16 +1897,16 @@ export default function App() {
             {positions.length === 0 ? <p className="rounded-sm border border-dashed border-[#96A8C7] p-4 text-sm text-[#0F1E46]/70">Noch keine Leistung erfasst.</p> : (
               <table className="w-full table-fixed border-collapse text-sm">
                 <thead><tr className="bg-[#0F1E46] text-left text-[11px] font-bold uppercase tracking-wider text-white">
-                  <th className="w-14 px-2 py-1">{(prof.schluessel || "BAS").slice(0, 6)}</th><th className="px-2 py-1">Leistung</th><th className="hidden w-24 px-2 py-1 text-right sm:table-cell">Menge</th><th className="w-[34%] px-2 py-1 sm:w-44">Ausführung durch</th><th className="w-[76px] px-1 py-1" />
+                  <th className="w-9 px-2 py-1">Nr.</th><th className="px-2 py-1">Leistung</th><th className="hidden w-24 px-2 py-1 text-right sm:table-cell">Menge</th><th className="w-[34%] px-2 py-1 sm:w-44">Ausführung durch</th><th className="w-[76px] px-1 py-1" />
                 </tr></thead>
                 <tbody>
-                  {positions.map((p) => (
+                  {positions.map((p, pi) => (
                     <tr key={p.id} onClick={() => startEdit(p)} className={`cursor-pointer border-b border-[#C8D2E6] align-top hover:bg-[#DAE1F0]/40 ${p.pruefen ? "text-[#C62828]" : "text-[#0F1E46]"}`}>
-                      <td className={`px-2 py-2 ${p.pruefen ? "border-l-4 border-[#C62828]" : ""}`}><span className="rounded-sm bg-[#0F1E46] px-1.5 py-0.5 text-xs font-bold tabular-nums text-[#FAD200]">{p.bas || "—"}</span></td>
+                      <td className={`px-2 py-2 font-bold tabular-nums ${p.pruefen ? "border-l-4 border-[#C62828]" : ""}`}>{pi + 1}</td>
                       <td className="px-2 py-2">
                         <p className="break-words font-semibold">{p.bas ? basName(p.bas) : "Ohne BAS"}</p>
                         {p.pruefen && <p className="text-[11px] font-bold uppercase tracking-wider">Übernommen – bitte prüfen</p>}
-                        <p className={`text-xs ${p.pruefen ? "" : "text-[#0F1E46]/70"}`}>{[p.sektion || "—", ort2Text(p), p.station].filter(Boolean).join(" · ")} · {p.taetigkeit || "—"}</p>
+                        <p className={`text-xs ${p.pruefen ? "" : "text-[#0F1E46]/70"}`}>{p.bas && <span className="mr-1.5 rounded-sm bg-[#0F1E46] px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-[#FAD200]">{p.bas}</span>}{posZeile(p)}</p>
                         <p className="mt-0.5 text-xs text-[#0F1E46]/70"><span className="font-bold text-[#0F1E46] sm:hidden">{num(p.menge) ? `${fmt(num(p.menge))} ${p.einheit || ""} · ` : ""}</span>{fmt(phOf(p))} Pers.-Std. · {fmt(ghOf(p))} Geräte-Std.</p>
                       </td>
                       <td className="hidden whitespace-nowrap px-2 py-2 text-right font-bold tabular-nums sm:table-cell">{num(p.menge) ? `${fmt(num(p.menge))} ${p.einheit || ""}` : "—"}</td>
@@ -1748,11 +2012,11 @@ export default function App() {
         </section>
 
             <section className="min-w-0 rounded-sm border border-[#C8D2E6] bg-white">
-              <div className="flex items-center gap-2 border-b border-[#C8D2E6] px-4 py-2.5"><Camera size={16} className="text-[#0F1E46]" /><h2 className="text-sm font-bold">Fotos</h2><span className="text-xs text-[#677BA4]">({(day.fotos || []).filter((f) => !f.stillId).length})</span></div>
+              <div className="flex items-center gap-2 border-b border-[#C8D2E6] px-4 py-2.5"><Camera size={16} className="text-[#0F1E46]" /><h2 className="text-sm font-bold">Fotos</h2><span className="text-xs text-[#677BA4]">({(day.fotos || []).filter((f) => !f.stillId && !f.posId).length})</span></div>
               <div className="p-4">
-                {(day.fotos || []).filter((f) => !f.stillId).length === 0 && <p className="mb-3 text-sm text-[#677BA4]">Noch keine Fotos.</p>}
+                {(day.fotos || []).filter((f) => !f.stillId && !f.posId).length === 0 && <p className="mb-3 text-sm text-[#677BA4]">Noch keine Fotos.</p>}
                 <div className="grid grid-cols-2 gap-3">
-                  {(day.fotos || []).filter((f) => !f.stillId).map((f) => (
+                  {(day.fotos || []).filter((f) => !f.stillId && !f.posId).map((f) => (
                     <div key={f.id} className="rounded-sm border border-[#C8D2E6] p-2">
                       <div className="relative">
                         {fotoData[f.id] ? <img src={fotoData[f.id]} alt={f.text || f.name} className="h-32 w-full rounded-sm object-cover" /> : <div className="flex h-32 items-center justify-center bg-[#DAE1F0] text-xs text-[#677BA4]">lädt …</div>}
@@ -1773,6 +2037,7 @@ export default function App() {
         {hasContent && (
           <div className="flex flex-wrap gap-2">
             <button onClick={() => { setPreviewData({ day, positions, back: "home" }); setView("preview"); }} className="inline-flex items-center gap-2 rounded-sm bg-[#FAD200] px-4 py-2.5 text-sm font-bold text-[#0F1E46] hover:bg-[#FCE466]"><FileText size={16} /> Vorschau · PDF · Excel · XML</button>
+            <button onClick={() => exportExcel(day, positions, basName)} className="inline-flex items-center gap-2 rounded-sm bg-[#FAD200] px-4 py-2.5 text-sm font-bold text-[#0F1E46] hover:bg-[#FCE466]"><FileSpreadsheet size={16} /> Excel exportieren</button>
             <button onClick={closeDay} disabled={offen > 0} className={`inline-flex items-center gap-2 rounded-sm px-4 py-2.5 text-sm font-bold ${offen > 0 ? "cursor-not-allowed bg-[#B1BFD8] text-white" : "bg-[#FAD200] text-[#0F1E46] hover:bg-[#FCE466]"}`}><CheckCircle2 size={16} /> Tag abschließen</button>
             {offen > 0 && <span className="self-center text-xs font-bold text-[#C62828]">Erst {offen} übernommene Leistung(en) prüfen</span>}
           </div>
